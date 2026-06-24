@@ -1,0 +1,16 @@
+{
+  "name": "skyphusion-monitor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "External security-posture + uptime monitor (Cloudflare Worker, cron) for the skyphusion public surfaces.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev --test-scheduled"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250101.0",
+    "typescript": "^5.6.0",
+    "wrangler": "^4.102.0"
+  }
+}

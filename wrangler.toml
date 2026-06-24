@@ -1,0 +1,28 @@
+# skyphusion-monitor -- external security-posture + uptime monitor.
+# A standalone Cloudflare Worker (cron) that probes the PUBLIC surfaces from CFs
+# global edge (a true outside-the-fleet vantage; separate failure domain from the
+# Hetzner fleet + Gatus-on-dischord, which sees the inside view). Replaces the
+# retired HEL1 nofx monitor idea -- $0, no box, no cross-zone networking.
+#
+# account_id is read from CLOUDFLARE_ACCOUNT_ID (never hardcoded).
+# Secret: NTFY_TOKEN (least-privilege ntfy publish token) -> `wrangler secret put NTFY_TOKEN`.
+name = "skyphusion-monitor"
+main = "src/index.ts"
+compatibility_date = "2026-06-01"
+
+# No public route needed -- cron-triggered. The fetch handler (/health, /run) is
+# only reachable if a route is added; kept off the public internet by default.
+workers_dev = false
+preview_urls = false
+
+[observability]
+enabled = true
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+[vars]
+NTFY_URL = "https://ntfy.skyphusion.org"
+MONITOR_TOPIC = "skyphusion-uptime"
+# RUN_KEY gates the manual /run fetch endpoint (set to a non-empty secret-ish value to enable).
+RUN_KEY = ""
