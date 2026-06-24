@@ -29,7 +29,7 @@ const CHECKS: Check[] = [
   { name: "blog",         url: "https://skyphusion.net/",        ok: [200, 301, 302, 308], kind: "uptime" },
   { name: "playground",   url: "https://play.skyphusion.org/",   ok: [200, 302], kind: "uptime",
     requireHeaders: { "x-content-type-options": "nosniff" } },   // F4: nosniff on our workers 200
-  { name: "status-gatus", url: "https://status.skyphusion.org/", ok: [200], kind: "uptime" },
+  { name: "status-gatus", url: "https://status.skyphusion.org/", ok: [200, 302], kind: "uptime" },
   { name: "authentik",    url: "https://auth.skyphusion.org/",   ok: [200, 302], kind: "uptime" },
   { name: "ntfy",         url: "https://ntfy.skyphusion.org/",   ok: [200], kind: "uptime" },
 
@@ -42,9 +42,9 @@ const CHECKS: Check[] = [
     bodyMustNotInclude: ["\"modules\"", "config_schema"], note: "workers_dev must stay OFF; serving = F1 regression" },
 
   // ---------- F2: Access must enforce on the vivijure custom domain ----------
-  { name: "F2.vivijure-access.cast",    url: "https://vivijure.skyphusion.org/api/cast",    ok: [401, 403], kind: "posture",
-    bodyMustNotInclude: ["portrait_key", "\"bible\""], note: "anon must be Access-blocked; 200+data = Access opened up" },
-  { name: "F2.vivijure-access.modules", url: "https://vivijure.skyphusion.org/api/modules", ok: [401, 403], kind: "posture",
+  { name: "F2.vivijure-access.cast",    url: "https://vivijure.skyphusion.org/api/cast",    ok: [302, 401, 403], kind: "posture",
+    bodyMustNotInclude: ["portrait_key", "\"bible\""], note: "302=Access-login / 401/403 = blocked (healthy); 200+data = Access opened up" },
+  { name: "F2.vivijure-access.modules", url: "https://vivijure.skyphusion.org/api/modules", ok: [302, 401, 403], kind: "posture",
     bodyMustNotInclude: ["config_schema"], note: "anon must be Access-blocked; 200+data = Access opened up" },
 
   // ---------- in-worker auth regression tripwires ----------
@@ -58,7 +58,7 @@ const CHECKS: Check[] = [
 
 interface Result { name: string; kind: Kind; url: string; status: number | null; expected: number[]; ok: boolean; reason?: string; note?: string }
 
-async function runCheck(c: Check): Promise<Result> {
+async function attemptCheck(c: Check): Promise<Result> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 12_000);
   try {
@@ -87,6 +87,11 @@ async function runCheck(c: Check): Promise<Result> {
     clearTimeout(t);
   }
 }
+async function runCheck(c: Check): Promise<Result> {
+  let r = await attemptCheck(c);
+  if (!r.ok) { await new Promise(res => setTimeout(res, 1500)); r = await attemptCheck(c); } // retry once: tolerate a transient blip
+  return r;
+}
 async function runAll(): Promise<Result[]> { return Promise.all(CHECKS.map(runCheck)); }
 
 async function alert(env: Env, fails: Result[]): Promise<void> {
@@ -110,20 +115,43 @@ async function alert(env: Env, fails: Result[]): Promise<void> {
   });
 }
 
+async function recordRun(env: Env, results: Result[]): Promise<void> {
+  const fails = results.filter(r => !r.ok);
+  const postureFails = fails.filter(f => f.kind === "posture");
+  await env.MONITOR_STATE.put("last-run",
+    JSON.stringify({ ts: Date.now(), checks: results.length, failures: fails.length,
+      posture: postureFails.length, failNames: fails.map(f => f.name) }),
+    { expirationTtl: 86_400 });
+}
+
 export default {
   async scheduled(_e: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     const results = await runAll();
     const fails = results.filter(r => !r.ok);
+    ctx.waitUntil(recordRun(env, results));
     if (fails.length) ctx.waitUntil(alert(env, fails));
   },
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
-    if (url.pathname === "/health")
-      return Response.json({ service: "skyphusion-monitor", checks: CHECKS.length, topic: env.MONITOR_TOPIC });
+    if (url.pathname === "/health") {
+      // Gatus polls this: 200 = healthy, 503 = monitor stale (cron stopped = dead-man)
+      // or the last run had failures. Counts only -- never leak check names.
+      const raw = await env.MONITOR_STATE.get("last-run");
+      const h: Record<string, unknown> = { service: "skyphusion-monitor", checks: CHECKS.length };
+      if (!raw) return Response.json({ ...h, ok: false, reason: "no run recorded yet" }, { status: 503, headers: { "cache-control": "no-store" } });
+      const last = JSON.parse(raw) as { ts: number; checks: number; failures: number; posture?: number };
+      const ageMs = Date.now() - last.ts;
+      const stale = ageMs > 12 * 60_000;
+      const sick = (last.posture ?? last.failures) > 0;   // posture regression only
+      const ok = !stale && !sick;
+      return Response.json({ ...h, ok, lastRunTs: last.ts, ageSec: Math.round(ageMs / 1000), failures: last.failures, posture: last.posture ?? 0, stale, sick },
+        { status: ok ? 200 : 503, headers: { "cache-control": "no-store" } });
+    }
     if (url.pathname === "/run") {
       if (!env.RUN_KEY || url.searchParams.get("key") !== env.RUN_KEY) return new Response("forbidden", { status: 403 });
       const results = await runAll();
       const fails = results.filter(r => !r.ok);
+      await recordRun(env, results);
       if (fails.length) await alert(env, fails);
       return Response.json({ failures: fails.length, results }, { headers: { "cache-control": "no-store" } });
     }

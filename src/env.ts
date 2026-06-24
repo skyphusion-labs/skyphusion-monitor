@@ -6,4 +6,6 @@ export interface Env {
   NTFY_TOKEN: string;      // secret: least-privilege ntfy publish token
   // gate for the manual /run fetch endpoint (empty = disabled)
   RUN_KEY: string;         // var
+  // Last-run state for the /health dead-man's-switch.
+  MONITOR_STATE: KVNamespace;
 }

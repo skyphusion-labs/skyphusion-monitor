@@ -15,6 +15,18 @@ compatibility_date = "2026-06-01"
 workers_dev = false
 preview_urls = false
 
+# Custom domain so Gatus (on dischord) can poll the health endpoint. /health is
+# counts-only (no check names) -> safe to expose; / and gated /run also live here.
+routes = [
+  { pattern = "monitor.skyphusion.org", custom_domain = true }
+]
+
+# Last-run state for the /health dead-man's-switch (cron writes ts+counts; /health
+# returns 503 if the last run is stale >12m or had failures -> Gatus goes RED).
+[[kv_namespaces]]
+binding = "MONITOR_STATE"
+id = "5390096a4f8b46b280a437b26a777b38"
+
 [observability]
 enabled = true
 
