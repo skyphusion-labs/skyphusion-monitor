@@ -66,8 +66,11 @@ cron path plus the `/health` endpoint, after `npm run typecheck` is green.
 
 - The first command in any op is the member's own login shell:
   `sudo -u <member> bash -lc '<ops>'` (own `$HOME`, own `~/dev/skyphusion-monitor` clone, own
-  gh/CF creds). Commits and PRs land under the member's `skyphusion-<member>` identity; Conrad's
-  own commits author as `conrad@rockenhaus.net`.
+  gh/CF creds). Crew commits land under the member's own `skyphusion-<member>` identity, never Conrad's.
+  (Conrad devs ONLY on his laptop, where his commits author as
+  `Conrad Rockenhaus <conrad@skyphusion.org>` -- his real name kept, the in-house
+  `@skyphusion.org` email; his name is never scrubbed and his history never rewritten. On jello
+  the `conrad` user is the god process and commits as `Mackaye <mackaye@skyphusion.org>`.)
 - Fleet/infra operating memory lives under
   `~/.claude/projects/-home-conrad-dev-fleet-chezmoi/memory/` (Gatus migration, CF account
   inventory, ntfy topic); load it before acting.
