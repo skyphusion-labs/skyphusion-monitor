@@ -1,0 +1,54 @@
+name: deploy
+
+# Deploy the skyphusion-monitor Cloudflare Worker on a green push to main.
+#
+# skyphusion-monitor is a PRIVATE repo, so per fleet CI policy this runs on the
+# org-level self-hosted fleet pool ([self-hosted, fleet]), NOT a GitHub-hosted
+# runner. No fork PRs (private), and deploy is still gated to push-to-main.
+#
+# Gate: `npm run typecheck` (tsc --noEmit) runs before deploy. tsc is not part of
+# any test run, so a type error would otherwise ship silently -- it must block.
+#
+# Why this exists: merged PRs were not reaching the live worker (caught running
+# stale 2026-07-02, hand-redeployed). This makes main == live automatically.
+#
+# Required repo secrets (Settings -> Secrets and variables -> Actions):
+#   CLOUDFLARE_API_TOKEN   -- per-function, DEPLOY-scoped token for this worker:
+#                             Workers Scripts:Edit + Account Settings:Read (account)
+#                             + Workers Routes:Edit scoped to the skyphusion.org
+#                             zone ONLY (for the monitor.skyphusion.org custom
+#                             domain). No R2/D1/KV-data/other-zone reach.
+#   CLOUDFLARE_ACCOUNT_ID  -- the Cloudflare account id (wrangler.toml reads it
+#                             from env; never hardcoded).
+#
+# The worker runtime secret NTFY_TOKEN is set once via `wrangler secret put` and
+# persists across deploys -- it is NOT set here.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-skyphusion-monitor-main
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy skyphusion-monitor worker
+    runs-on: [self-hosted, fleet]
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      # Gate: do not ship a worker that does not typecheck.
+      - run: npm run typecheck
+      - run: npx wrangler deploy
