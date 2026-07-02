@@ -40,6 +40,8 @@ const CHECKS: Check[] = [
     bodyMustNotInclude: ["\"cast\"", "portrait_key"], note: "workers_dev must stay OFF; serving = F1 regression" },
   { name: "F1.vivijure-workersdev.modules", url: `${WD("vivijure-studio")}/api/modules`, ok: [404, 530, 1033], kind: "posture",
     bodyMustNotInclude: ["\"modules\"", "config_schema"], note: "workers_dev must stay OFF; serving = F1 regression" },
+  { name: "F1.grid-hub-workersdev",         url: `${WD("grid-hub")}/`,                   ok: [404, 530, 1033], kind: "posture",
+    note: "grid-hub is backend-only (reached by world Workers via service binding); workers.dev must stay OFF (fleet-chezmoi#46)" },
 
   // ---------- F2: Access must enforce on the vivijure custom domain ----------
   { name: "F2.vivijure-access.cast",    url: "https://vivijure.skyphusion.org/api/cast",    ok: [302, 401, 403], kind: "posture",
