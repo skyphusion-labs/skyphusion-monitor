@@ -50,10 +50,10 @@ const CHECKS: Check[] = [
   // ---------- in-worker auth regression tripwires ----------
   // These workers self-authenticate (so workers.dev is not a bypass). Assert their
   // protected endpoints KEEP returning 401 -- a 200 here = an auth regression.
-  { name: "AUTH.email-inbound.messages", url: `${WD("skyphusion-email-inbound")}/api/messages`, ok: [401, 403], kind: "posture",
-    bodyMustNotInclude: ["\"from\"", "\"subject\"", "\"body\""], note: "email API must require a token; 200 = mailbox exposure" },
+  { name: "AUTH.email-inbound.messages", url: `${WD("skyphusion-email-inbound")}/api/messages`, ok: [401, 403, 404], kind: "posture",
+    bodyMustNotInclude: ["\"from\"", "\"subject\"", "\"body\""], note: "email API must require a token; 200 = mailbox exposure. 404 = workers.dev disabled (route gone), also healthy (fleet-chezmoi#46)" },
   { name: "AUTH.vivijure-search.root",   url: `${WD("vivijure-search")}/`,                    ok: [401, 403, 404], kind: "posture",
-    note: "search worker must self-authenticate; 200+results = auth regression" },
+    note: "search worker must self-authenticate; 200+results = auth regression. 404 = workers.dev disabled (route gone), also healthy (fleet-chezmoi#46)" },
 ];
 
 interface Result { name: string; kind: Kind; url: string; status: number | null; expected: number[]; ok: boolean; reason?: string; note?: string }
