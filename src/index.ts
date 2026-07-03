@@ -126,12 +126,46 @@ async function recordRun(env: Env, results: Result[]): Promise<void> {
     { expirationTtl: 86_400 });
 }
 
+// --- delivery dead-man (#278) --------------------------------------------------------------------
+// The mail-relay dead-man address routes to this Worker. Any delivered mail proves the WHOLE
+// outbound path worked (dischord cron -> msmtp -> relay.internal:2525 -> OpenDKIM sign ->
+// direct-to-MX egress -> CF MX for skyphusion.org -> Email Routing -> here). We GET the HC.io
+// check ping URL so HC.io does NOT page; if ANY hop breaks, no mail arrives, no ping, and HC.io
+// fires after timeout(3600s)+grace(900s). Per-function key: this Worker holds ONLY the check's
+// ping URL (HC_DEADMAN_PING_URL secret), NEVER the HC.io management key.
+const DEADMAN_FROM = "noreply@skyphusion.org"; // the pusher's envelope sender (mail-relay-deadman.sh)
+
+async function pingDeadman(url: string): Promise<void> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 10_000);
+  try {
+    await fetch(url, {
+      method: "GET",
+      signal: ctrl.signal,
+      headers: { "user-agent": "skyphusion-monitor/deadman (+delivery dead-man #278)" },
+    });
+  } catch {
+    // swallow: a failed ping just means HC.io pages if it persists -- safe-fail, no throw.
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 export default {
   async scheduled(_e: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     const results = await runAll();
     const fails = results.filter(r => !r.ok);
     ctx.waitUntil(recordRun(env, results));
     if (fails.length) ctx.waitUntil(alert(env, fails));
+  },
+  async email(message: ForwardableEmailMessage, env: Env, ctx: ExecutionContext): Promise<void> {
+    // Only the fleet pusher keeps the dead-man alive: defense-in-depth so a stray sender to
+    // this (obscure) address cannot reset the timer and mask a real delivery outage.
+    if (message.from !== DEADMAN_FROM) return;
+    const url = env.HC_DEADMAN_PING_URL;
+    // No-op until wired (secret unset); only ever GET the HC.io ping host (SSRF guard).
+    if (!url || !url.startsWith("https://hc-ping.com/")) return;
+    ctx.waitUntil(pingDeadman(url));
   },
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);

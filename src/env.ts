@@ -8,4 +8,7 @@ export interface Env {
   RUN_KEY: string;         // var
   // Last-run state for the /health dead-man's-switch.
   MONITOR_STATE: KVNamespace;
+  // delivery dead-man (#278): the HC.io check PING url (per-function -- NOT the mgmt key).
+  // Set via `wrangler secret put HC_DEADMAN_PING_URL`. Empty/unset -> the email() handler no-ops.
+  HC_DEADMAN_PING_URL: string; // secret
 }
