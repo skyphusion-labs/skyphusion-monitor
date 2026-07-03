@@ -7,12 +7,13 @@ Guidance for Claude Code (and the crew) working in this repo.
 An external **security-posture + uptime** monitor: a standalone Cloudflare Worker (cron, every
 5 minutes) that probes the public skyphusion surfaces from CF's global edge -- a true
 *outside-the-fleet* vantage and a **separate failure domain** from the Hetzner fleet and from
-Gatus-on-dischord (which sees the inside view). It runs at `monitor.skyphusion.org` and was
+Gatus-on-biafra (which sees the inside view; fleet status itself is fronted by the off-fleet watt box, fc#162). It runs at `monitor.skyphusion.org` and was
 chosen over a US Hetzner box (the retired nofx idea): $0, no box, no cross-zone networking.
 Currently **v0.1.0**.
 
-> Note: this is NOT Gatus. Gatus is the inside-view monitor on dischord (the `monitoring` stack
-> in `swarm-iac`, config in `fleet-chezmoi`, at `status.skyphusion.org`). This Worker is the
+> Note: this is NOT Gatus. The inside-view Gatus runs on biafra (the `monitoring` stack
+> in `swarm-iac`, config in `fleet-chezmoi`); `status.skyphusion.org` is served by the
+> off-fleet watt monitor box (fc#162). This Worker is the
 > complementary outside view; both alert via ntfy.
 
 ## Documentation map
@@ -69,7 +70,7 @@ cron path plus the `/health` endpoint, after `npm run typecheck` is green.
   gh/CF creds). Crew commits land under the member's own `skyphusion-<member>` identity, never Conrad's.
   (Conrad devs ONLY on his laptop, where his commits author as
   `Conrad Rockenhaus <conrad@skyphusion.org>` -- his real name kept, the in-house
-  `@skyphusion.org` email; his name is never scrubbed and his history never rewritten. On jello
+  `@skyphusion.org` email; his name is never scrubbed and his history never rewritten. On the crew host
   the `conrad` user is the god process and commits as `Mackaye <mackaye@skyphusion.org>`.)
 - Fleet/infra operating memory lives under
   `~/.claude/projects/-home-conrad-dev-fleet-chezmoi/memory/` (Gatus migration, CF account
