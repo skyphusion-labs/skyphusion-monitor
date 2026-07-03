@@ -6,6 +6,9 @@
 #
 # account_id is read from CLOUDFLARE_ACCOUNT_ID (never hardcoded).
 # Secret: NTFY_TOKEN (least-privilege ntfy publish token) -> `wrangler secret put NTFY_TOKEN`.
+# Secret: HC_DEADMAN_PING_URL -- the HC.io delivery dead-man check PING url (#278) ->
+#   `wrangler secret put HC_DEADMAN_PING_URL`. The email() handler GETs it on receipt at the
+#   dead-man Email Routing address. Per-function: the ping url ONLY, never the HC.io mgmt key.
 name = "skyphusion-monitor"
 main = "src/index.ts"
 compatibility_date = "2026-06-01"
