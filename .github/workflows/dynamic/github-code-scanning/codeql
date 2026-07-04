@@ -1,0 +1,13 @@
+- name: Initialize CodeQL
+  uses: github/codeql-action/init@v3
+  with:
+    languages: 'javascript-typescript'
+
+- name: Install dependencies
+  run: npm ci  # Use 'npm ci' for CI environments
+
+- name: Autobuild
+  uses: github/codeql-action/autobuild@v3
+
+- name: Perform CodeQL Analysis
+  uses: github/codeql-action/analyze@v3
