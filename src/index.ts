@@ -151,12 +151,76 @@ async function pingDeadman(url: string): Promise<void> {
   }
 }
 
+// --- TLS cert-expiry probe (monitor#3 part 2) ------------------------------------------------
+// Daily (KV-gated) sweep of every active zone's ssl/certificate_packs via the CF API; ntfy-warns
+// when any ACTIVE cert is within CERT_WARN_DAYS of expires_on. Info-only on /health (no status
+// flip: CF Universal SSL auto-renews ~30d out, and a fully-expired cert already fails the uptime
+// probes -- this is the early-warning lane, not a pager). Per-function key: CF_CERT_READ_TOKEN
+// is read-scoped (Zone Read + SSL and Certificates Read) and never the account admin token.
+const CERT_WARN_DAYS = 14;
+const CERT_CHECK_INTERVAL_MS = 20 * 60 * 60 * 1000; // ~daily; <24h so cron jitter can't skip a day
+
+interface CertState { ts: number; zones?: number; soonestDays?: number | null; warned?: number; error?: string }
+
+async function cfGet<T>(env: Env, path: string): Promise<T[]> {
+  const res = await fetch(`https://api.cloudflare.com/client/v4${path}`, {
+    headers: { Authorization: `Bearer ${env.CF_CERT_READ_TOKEN}`, "user-agent": "skyphusion-monitor/cert-expiry (+monitor#3)" },
+  });
+  if (!res.ok) throw new Error(`CF API ${path}: HTTP ${res.status}`);
+  const j = await res.json() as { success: boolean; result: T[] | null };
+  if (!j.success || !j.result) throw new Error(`CF API ${path}: success=false`);
+  return j.result;
+}
+
+async function maybeCheckCerts(env: Env, now: number): Promise<void> {
+  if (!env.CF_CERT_READ_TOKEN) return; // no-op until the secret is set
+  const raw = await env.MONITOR_STATE.get("cert-check");
+  if (raw && now - (JSON.parse(raw) as CertState).ts < CERT_CHECK_INTERVAL_MS) return;
+  try {
+    const zones = await cfGet<{ id: string; name: string }>(env, "/zones?status=active&per_page=50");
+    const warnings: string[] = [];
+    let soonestDays: number | null = null;
+    for (const z of zones) {
+      const packs = await cfGet<{ status: string; certificates?: { expires_on?: string }[] }>(
+        env, `/zones/${z.id}/ssl/certificate_packs`);
+      for (const p of packs) {
+        if (p.status !== "active") continue;
+        for (const c of p.certificates ?? []) {
+          if (!c.expires_on) continue;
+          const days = Math.floor((Date.parse(c.expires_on) - now) / 86_400_000);
+          if (soonestDays === null || days < soonestDays) soonestDays = days;
+          if (days <= CERT_WARN_DAYS) warnings.push(`${z.name}: TLS cert expires in ${days}d (${c.expires_on})`);
+        }
+      }
+    }
+    await env.MONITOR_STATE.put("cert-check",
+      JSON.stringify({ ts: now, zones: zones.length, soonestDays, warned: warnings.length } satisfies CertState));
+    if (warnings.length && env.NTFY_TOKEN && env.NTFY_URL && env.MONITOR_TOPIC) {
+      await fetch(`${env.NTFY_URL}/${env.MONITOR_TOPIC}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${env.NTFY_TOKEN}`,
+          Title: `TLS: ${warnings.length} cert(s) near expiry`,
+          Priority: "high",
+          Tags: "warning,lock",
+        },
+        body: warnings.join("\n"),
+      });
+    }
+  } catch (e) {
+    // Record the failure (visible on /health) and let the next daily window retry; a broken
+    // cert probe must not fail the run or page -- the surfaces themselves are still covered.
+    await env.MONITOR_STATE.put("cert-check", JSON.stringify({ ts: now, error: String(e) } satisfies CertState));
+  }
+}
+
 export default {
   async scheduled(_e: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     const results = await runAll();
     const fails = results.filter(r => !r.ok);
     ctx.waitUntil(recordRun(env, results));
     if (fails.length) ctx.waitUntil(alert(env, fails));
+    ctx.waitUntil(maybeCheckCerts(env, Date.now())); // monitor#3 part 2: daily-gated inside
     // scheduled dead-man (monitor#3 part 1): reaching here means the cron FIRED and the run
     // COMPLETED -> ping the HC.io check so it does not page. This signals MONITOR liveness,
     // NOT check health -- surface failures are already handled by alert()/ntfy + /health RED;
@@ -189,7 +253,12 @@ export default {
       const stale = ageMs > 12 * 60_000;
       const sick = (last.posture ?? last.failures) > 0;   // posture regression only
       const ok = !stale && !sick;
-      return Response.json({ ...h, ok, lastRunTs: last.ts, ageSec: Math.round(ageMs / 1000), failures: last.failures, posture: last.posture ?? 0, stale, sick },
+      // cert-expiry (monitor#3 part 2): INFO-ONLY, never flips /health status. Counts/days only,
+      // no zone names (same never-leak-check-names rule as above).
+      const certRaw = await env.MONITOR_STATE.get("cert-check");
+      const cert = certRaw ? (() => { const c = JSON.parse(certRaw) as CertState;
+        return { soonestDays: c.soonestDays ?? null, warned: c.warned ?? 0, probeError: !!c.error, ageSec: Math.round((Date.now() - c.ts) / 1000) }; })() : null;
+      return Response.json({ ...h, ok, lastRunTs: last.ts, ageSec: Math.round(ageMs / 1000), failures: last.failures, posture: last.posture ?? 0, stale, sick, cert },
         { status: ok ? 200 : 503, headers: { "cache-control": "no-store" } });
     }
     if (url.pathname === "/run") {

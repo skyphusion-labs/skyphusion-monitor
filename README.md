@@ -25,8 +25,19 @@ ntfy publish token scoped to the alerts topic).
 - `wrangler secret put NTFY_TOKEN` then `npm run deploy`. `account_id` comes from `CLOUDFLARE_ACCOUNT_ID`.
 - Cron `*/5 * * * *`. No public route (cron-only); `/health` + gated `/run?key=` exist if a route is added.
 
+## TLS cert-expiry probe (monitor#3 part 2)
+Workers `fetch` cannot read the peer cert, so expiry comes from the CF API instead: a daily
+(KV-gated, ~20h interval) sweep lists the account's active zones and each zone's
+`ssl/certificate_packs`, and ntfy-warns (`high`, not `urgent`) when any ACTIVE cert is within
+14 days of `expires_on`. Info-only on `/health` (`cert: {soonestDays, warned, probeError,
+ageSec}`; never flips status -- Universal SSL auto-renews ~30d out, and a fully-expired cert
+already fails the uptime probes). Auth via `CF_CERT_READ_TOKEN`, a READ-scoped per-function
+CF token (Zone Read + SSL and Certificates Read only); unset -> the probe no-ops. A probe
+error is recorded to KV (visible on `/health`) and retried at the next daily window, never
+paged: the surfaces themselves stay covered by the uptime checks.
+
 ## Follow-ups (v2)
-- TLS cert-expiry checks (Workers `fetch` does not expose the peer cert; needs a TLS-probe API).
-- Dead-mans-switch: ping healthchecks.io each successful run so a DEAD monitor itself alerts
-  (HEALTHCHECKS_IO_TOKEN is already in crew-secrets).
+- ~~TLS cert-expiry checks~~ DONE (monitor#3 part 2, above).
+- ~~Dead-mans-switch~~ DONE twice over: scheduled-run HC.io ping (monitor#3 part 1) + the
+  mail-delivery dead-man (#278).
 - Widen posture checks as more Access-gated surfaces land.
