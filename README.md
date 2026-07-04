@@ -17,6 +17,11 @@ no cross-zone networking, better/global vantage.
   - `chat-plus.skyphusion.org` (openwebui-friends, trusted-email-header SSO) must answer the
     Access login **302** (or 401/403) to an anonymous fetch -- a `200`/OpenWebUI markup means
     the Access gate dropped and the friends instance is serving anon on Unified Billing.
+  - `play.skyphusion.org` (prism, an AI-spend surface), `chat.skyphusion.org` (free-tier
+    OpenWebUI), and `status.skyphusion.org` (Gatus, internal topology) must likewise answer
+    the Access login **302** (or 401/403) anonymously -- a `200`/app markup on any of them
+    means that Access gate dropped (monitor#17). The watt-soak hosts (`status-watt`,
+    `grafana-watt`) are deliberately excluded until they graduate from the fc#195 soak.
 
 ## Alerting
 Publishes to **ntfy** (`MONITOR_TOPIC`) ONLY when a check fails its expectation (quiet when healthy).
