@@ -56,6 +56,19 @@ const CHECKS: Check[] = [
   { name: "F2.chatplus-access", url: "https://chat-plus.skyphusion.org/", ok: [302, 401, 403], kind: "posture",
     bodyMustNotInclude: ["WebUI", "webui"], note: "302=Access-login (healthy, verified -> skyphusion.cloudflareaccess.com); 200/OpenWebUI markup = Access gate dropped" },
 
+  // ---------- F2-class: Access must enforce on the remaining gated surfaces (monitor#17) ----------
+  // Live CF Access app inventory diffed against CHECKS 2026-07-04; all three verified
+  // answering the Access login 302 anonymously (body = the generic CF redirect page,
+  // marker-free). play = an AI-spend surface (prism on Unified Billing), chat = the
+  // free-tier OpenWebUI, status = the Gatus internal-topology view. The watt-soak hosts
+  // (status-watt, grafana-watt) are deliberately NOT here: soak surfaces, fc#195.
+  { name: "F2.play-access", url: "https://play.skyphusion.org/", ok: [302, 401, 403], kind: "posture",
+    bodyMustNotInclude: ["system-prompt", "sidebar-backdrop"], note: "302=Access-login (healthy); 200/prism markup = Access gate dropped on an AI-spend surface" },
+  { name: "F2.chat-access", url: "https://chat.skyphusion.org/", ok: [302, 401, 403], kind: "posture",
+    bodyMustNotInclude: ["WebUI", "webui"], note: "302=Access-login (healthy); 200/OpenWebUI markup = Access gate dropped" },
+  { name: "F2.status-access", url: "https://status.skyphusion.org/", ok: [302, 401, 403], kind: "posture",
+    bodyMustNotInclude: ["Gatus", "gatus"], note: "302=Access-login (healthy); 200/Gatus markup = Access gate dropped, internal topology exposed" },
+
   // ---------- in-worker auth regression tripwires ----------
   // These workers self-authenticate (so workers.dev is not a bypass). Assert their
   // protected endpoints KEEP returning 401 -- a 200 here = an auth regression.
