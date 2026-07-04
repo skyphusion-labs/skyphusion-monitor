@@ -49,6 +49,13 @@ const CHECKS: Check[] = [
   { name: "F2.vivijure-access.modules", url: "https://vivijure.skyphusion.org/api/modules", ok: [302, 401, 403], kind: "posture",
     bodyMustNotInclude: ["config_schema"], note: "anon must be Access-blocked; 200+data = Access opened up" },
 
+  // ---------- F2-class: Access must enforce on chat-plus (openwebui-friends) ----------
+  // Identity allow-list + trusted-email-header SSO (fleet-chezmoi fc#294): the origin
+  // TRUSTS Cf-Access-Authenticated-User-Email, so the Access gate dropping = the friends
+  // instance serving anonymously on Conrad's Unified Billing (denial-of-wallet surface).
+  { name: "F2.chatplus-access", url: "https://chat-plus.skyphusion.org/", ok: [302, 401, 403], kind: "posture",
+    bodyMustNotInclude: ["WebUI", "webui"], note: "302=Access-login (healthy, verified -> skyphusion.cloudflareaccess.com); 200/OpenWebUI markup = Access gate dropped" },
+
   // ---------- in-worker auth regression tripwires ----------
   // These workers self-authenticate (so workers.dev is not a bypass). Assert their
   // protected endpoints KEEP returning 401 -- a 200 here = an auth regression.

@@ -1,6 +1,6 @@
 {
   "name": "skyphusion-monitor",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "External security-posture + uptime monitor (Cloudflare Worker, cron) for the skyphusion public surfaces.",
   "scripts": {
