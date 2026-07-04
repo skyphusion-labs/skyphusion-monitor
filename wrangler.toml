@@ -9,6 +9,9 @@
 # Secret: HC_DEADMAN_PING_URL -- the HC.io delivery dead-man check PING url (#278) ->
 #   `wrangler secret put HC_DEADMAN_PING_URL`. The email() handler GETs it on receipt at the
 #   dead-man Email Routing address. Per-function: the ping url ONLY, never the HC.io mgmt key.
+# Secret: HC_CRON_PING_URL -- the HC.io SCHEDULED-run dead-man check PING url (monitor#3) ->
+#   `wrangler secret put HC_CRON_PING_URL`. scheduled() GETs it after each completed cron run;
+#   if the cron stops firing, HC.io pages that the MONITOR is down. Per-function: ping url ONLY.
 name = "skyphusion-monitor"
 main = "src/index.ts"
 compatibility_date = "2026-06-01"

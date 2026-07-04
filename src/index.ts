@@ -157,6 +157,15 @@ export default {
     const fails = results.filter(r => !r.ok);
     ctx.waitUntil(recordRun(env, results));
     if (fails.length) ctx.waitUntil(alert(env, fails));
+    // scheduled dead-man (monitor#3 part 1): reaching here means the cron FIRED and the run
+    // COMPLETED -> ping the HC.io check so it does not page. This signals MONITOR liveness,
+    // NOT check health -- surface failures are already handled by alert()/ntfy + /health RED;
+    // conflating them into the dead-man would double-page and muddy the 'is the monitor alive'
+    // signal. No-op until the secret is set; only ever GET the hc-ping host (SSRF guard, same
+    // as email()). If runAll() ever throws, scheduled() rejects BEFORE this -> no ping -> HC.io
+    // pages, which is exactly right (the monitor broke).
+    const cronPing = env.HC_CRON_PING_URL;
+    if (cronPing && cronPing.startsWith('https://hc-ping.com/')) ctx.waitUntil(pingDeadman(cronPing));
   },
   async email(message: ForwardableEmailMessage, env: Env, ctx: ExecutionContext): Promise<void> {
     // Only the fleet pusher keeps the dead-man alive: defense-in-depth so a stray sender to
