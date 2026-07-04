@@ -18,4 +18,8 @@ export interface Env {
   // Per-function: the ping url ONLY, never the HC.io mgmt key. DISTINCT from the email
   // delivery dead-man (HC_DEADMAN_PING_URL, #278).
   HC_CRON_PING_URL: string; // secret
+  // TLS cert-expiry probe (monitor#3 part 2): READ-scoped CF API token (Zone Read + SSL and
+  // Certificates Read ONLY -- per-function, never the account admin token). Set via
+  // `wrangler secret put CF_CERT_READ_TOKEN`. Empty/unset -> the cert probe no-ops.
+  CF_CERT_READ_TOKEN: string; // secret
 }

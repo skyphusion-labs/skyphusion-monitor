@@ -12,6 +12,10 @@
 # Secret: HC_CRON_PING_URL -- the HC.io SCHEDULED-run dead-man check PING url (monitor#3) ->
 #   `wrangler secret put HC_CRON_PING_URL`. scheduled() GETs it after each completed cron run;
 #   if the cron stops firing, HC.io pages that the MONITOR is down. Per-function: ping url ONLY.
+# Secret: CF_CERT_READ_TOKEN -- READ-scoped CF API token (Zone Read + SSL and Certificates Read
+#   ONLY) for the TLS cert-expiry probe (monitor#3 part 2) -> `wrangler secret put
+#   CF_CERT_READ_TOKEN`. Daily KV-gated sweep of active zones' certificate_packs; ntfy-warns
+#   inside 14d of expires_on. Per-function token; unset -> probe no-ops.
 name = "skyphusion-monitor"
 main = "src/index.ts"
 compatibility_date = "2026-06-01"
