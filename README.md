@@ -14,6 +14,9 @@ no cross-zone networking, better/global vantage.
     means the CF Access gate dropped (data-plane exposure).
   - `vivijure-studio.skyphusion.workers.dev/api/*` must answer **404** -- the F1 tripwire: if
     `workers_dev` is ever re-enabled, the unauthenticated backdoor reopens and this fires.
+  - `chat-plus.skyphusion.org` (openwebui-friends, trusted-email-header SSO) must answer the
+    Access login **302** (or 401/403) to an anonymous fetch -- a `200`/OpenWebUI markup means
+    the Access gate dropped and the friends instance is serving anon on Unified Billing.
 
 ## Alerting
 Publishes to **ntfy** (`MONITOR_TOPIC`) ONLY when a check fails its expectation (quiet when healthy).
