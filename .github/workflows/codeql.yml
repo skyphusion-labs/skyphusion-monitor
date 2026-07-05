@@ -1,11 +1,16 @@
-# Advanced CodeQL (required for self-hosted fleet runners without Node on PATH).
+# Advanced CodeQL for code scanning (security) and Code Quality on fleet runners.
 #
-# Default setup cannot inject setup-node/npm ci; its dynamic customization file is
-# not merged into the generated workflow. Default setup and advanced setup also
-# cannot both be enabled (SARIF upload is rejected).
+# TypeScript extraction requires Node on PATH; ephemeral fleet runners do not
+# ship it, so every JS/TS job runs setup-node + npm ci first.
 #
-# Disable default setup in repo Settings -> Advanced Security -> CodeQL analysis
-# -> Switch to advanced before merging this workflow.
+# Code scanning uses this advanced workflow (disable default setup in Settings ->
+# Advanced Security -> CodeQL analysis -> Switch to advanced).
+#
+# GitHub Code Quality also runs a separate dynamic workflow
+# (dynamic/github-code-scanning/codeql). Its build steps come from
+# .github/workflows/dynamic/github-code-scanning/codeql. If that check still
+# fails, set Settings -> Code quality -> Runner type to Standard GitHub runner,
+# or bake Node 22 into the fleet runner image.
 #
 # Private repo -> org fleet pool per CI policy (matches ci.yml / deploy.yml).
 
@@ -56,6 +61,31 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{matrix.language}}"
+
+  code-quality:
+    name: Code Quality (${{ matrix.language }})
+    runs-on: [self-hosted, fleet]
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: javascript-typescript
+            build-mode: none
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          analysis-kinds: code-quality
       - uses: github/codeql-action/analyze@v4
         with:
           category: "/language:${{matrix.language}}"
