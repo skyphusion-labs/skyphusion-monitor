@@ -8,9 +8,11 @@
 #
 # GitHub Code Quality also runs a separate dynamic workflow
 # (dynamic/github-code-scanning/codeql). Its build steps come from
-# .github/workflows/dynamic/github-code-scanning/codeql. If that check still
-# fails, set Settings -> Code quality -> Runner type to Standard GitHub runner,
-# or bake Node 22 into the fleet runner image.
+# .github/workflows/dynamic/github-code-scanning/codeql. NOTE (fc#385): the
+# fleet ephemeral runner image now bakes Node 22 on PATH (gha-eph-runner
+# >= 2.335.1-3), so the dynamic Code Quality workflow (which ignores
+# workflow-level setup-node steps) resolves node from the runner itself. The
+# step-injection above stays as belt-and-suspenders for the advanced jobs.
 #
 # Private repo -> org fleet pool per CI policy (matches ci.yml / deploy.yml).
 
