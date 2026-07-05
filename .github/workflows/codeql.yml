@@ -1,0 +1,53 @@
+# Advanced CodeQL for TypeScript/JavaScript. GitHub default setup on this repo
+# scans Actions workflows only; this job covers src/ and the rest of the TS tree.
+#
+# JS/TS must use build-mode: none (interpreted source, no compile step). Manual
+# and autobuild are compiled-language modes and fail on CodeQL 2.25+ with:
+#   "JavaScript/TypeScript does not support the manual build mode"
+#
+# Private repo -> org fleet pool per CI policy (matches ci.yml / deploy.yml).
+
+name: CodeQL Advanced
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '20 3 * * 0'
+
+permissions:
+  actions: read
+  contents: read
+  packages: read
+  security-events: write
+
+concurrency:
+  group: codeql-skyphusion-monitor-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: [self-hosted, fleet]
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: javascript-typescript
+            build-mode: none
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{matrix.language}}"
