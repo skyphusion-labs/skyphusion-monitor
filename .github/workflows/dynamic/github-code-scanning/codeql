@@ -1,8 +1,5 @@
-# Default-setup customization for JS/TS on self-hosted fleet runners.
-# TypeScript extraction requires Node on PATH; ephemeral runners do not ship it.
-# Advanced setup (codeql.yml) cannot coexist with default setup: SARIF upload is
-# rejected with "advanced configurations cannot be processed when default setup
-# is enabled".
+# Inserted into the CodeQL default-setup / Code Quality dynamic workflow before
+# analysis. TypeScript extraction needs node on PATH; fleet runners do not ship it.
 
 - name: Setup Node.js
   uses: actions/setup-node@v4
@@ -11,11 +8,3 @@
 
 - name: Install dependencies
   run: npm ci
-
-- name: Initialize CodeQL
-  uses: github/codeql-action/init@v4
-  with:
-    node-version: '22'
-
-- name: Perform CodeQL Analysis
-  uses: github/codeql-action/analyze@v4
