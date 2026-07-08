@@ -41,7 +41,7 @@ const CHECKS: Check[] = [
   { name: "F1.vivijure-workersdev.modules", url: `${WD("vivijure-studio")}/api/modules`, ok: [404, 530, 1033], kind: "posture",
     bodyMustNotInclude: ["\"modules\"", "config_schema"], note: "workers_dev must stay OFF; serving = F1 regression" },
   { name: "F1.grid-hub-workersdev",         url: `${WD("grid-hub")}/`,                   ok: [404, 530, 1033], kind: "posture",
-    note: "grid-hub is backend-only (reached by world Workers via service binding); workers.dev must stay OFF (fleet-chezmoi#46)" },
+    note: "grid-hub is backend-only (reached by world Workers via service binding); workers.dev must stay OFF" },
 
   // ---------- F2: Access must enforce on the vivijure custom domain ----------
   { name: "F2.vivijure-access.cast",    url: "https://vivijure.skyphusion.org/api/cast",    ok: [302, 401, 403], kind: "posture",
@@ -50,7 +50,7 @@ const CHECKS: Check[] = [
     bodyMustNotInclude: ["config_schema"], note: "anon must be Access-blocked; 200+data = Access opened up" },
 
   // ---------- F2-class: Access must enforce on chat-plus (openwebui-friends) ----------
-  // Identity allow-list + trusted-email-header SSO (fleet-chezmoi fc#294): the origin
+  // Identity allow-list + trusted-email-header SSO: the origin
   // TRUSTS Cf-Access-Authenticated-User-Email, so the Access gate dropping = the friends
   // instance serving anonymously on Conrad's Unified Billing (denial-of-wallet surface).
   { name: "F2.chatplus-access", url: "https://chat-plus.skyphusion.org/", ok: [302, 401, 403], kind: "posture",
@@ -60,8 +60,8 @@ const CHECKS: Check[] = [
   // Live CF Access app inventory diffed against CHECKS 2026-07-04; all three verified
   // answering the Access login 302 anonymously (body = the generic CF redirect page,
   // marker-free). play = an AI-spend surface (prism on Unified Billing), chat = the
-  // free-tier OpenWebUI, status = the Gatus internal-topology view. The watt-soak hosts
-  // (status-watt, grafana-watt) are deliberately NOT here: soak surfaces, fc#195.
+  // free-tier OpenWebUI, status = the internal status view. Soak hosts are deliberately
+  // excluded until they graduate from pre-production monitoring.
   { name: "F2.play-access", url: "https://play.skyphusion.org/", ok: [302, 401, 403], kind: "posture",
     bodyMustNotInclude: ["system-prompt", "sidebar-backdrop"], note: "302=Access-login (healthy); 200/prism markup = Access gate dropped on an AI-spend surface" },
   { name: "F2.chat-access", url: "https://chat.skyphusion.org/", ok: [302, 401, 403], kind: "posture",
@@ -73,9 +73,9 @@ const CHECKS: Check[] = [
   // These workers self-authenticate (so workers.dev is not a bypass). Assert their
   // protected endpoints KEEP returning 401 -- a 200 here = an auth regression.
   { name: "AUTH.email-inbound.messages", url: `${WD("skyphusion-email-inbound")}/api/messages`, ok: [401, 403, 404], kind: "posture",
-    bodyMustNotInclude: ["\"from\"", "\"subject\"", "\"body\""], note: "email API must require a token; 200 = mailbox exposure. 404 = workers.dev disabled (route gone), also healthy (fleet-chezmoi#46)" },
+    bodyMustNotInclude: ["\"from\"", "\"subject\"", "\"body\""], note: "email API must require a token; 200 = mailbox exposure. 404 = workers.dev disabled (route gone), also healthy" },
   { name: "AUTH.vivijure-search.root",   url: `${WD("vivijure-search")}/`,                    ok: [401, 403, 404], kind: "posture",
-    note: "search worker must self-authenticate; 200+results = auth regression. 404 = workers.dev disabled (route gone), also healthy (fleet-chezmoi#46)" },
+    note: "search worker must self-authenticate; 200+results = auth regression. 404 = workers.dev disabled (route gone), also healthy" },
 ];
 
 interface Result { name: string; kind: Kind; url: string; status: number | null; expected: number[]; ok: boolean; reason?: string; note?: string }
@@ -148,7 +148,7 @@ async function recordRun(env: Env, results: Result[]): Promise<void> {
 
 // --- delivery dead-man (#278) --------------------------------------------------------------------
 // The mail-relay dead-man address routes to this Worker. Any delivered mail proves the WHOLE
-// outbound path worked (dischord cron -> msmtp -> relay.internal:2525 -> OpenDKIM sign ->
+// outbound path worked (fleet mail relay -> direct-to-MX egress ->
 // direct-to-MX egress -> CF MX for skyphusion.org -> Email Routing -> here). We GET the HC.io
 // check ping URL so HC.io does NOT page; if ANY hop breaks, no mail arrives, no ping, and HC.io
 // fires after timeout(3600s)+grace(900s). Per-function key: this Worker holds ONLY the check's
