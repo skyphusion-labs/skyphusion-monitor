@@ -5,12 +5,16 @@
   "description": "External security-posture + uptime monitor (Cloudflare Worker, cron) for the skyphusion public surfaces.",
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "deploy": "wrangler deploy",
     "dev": "wrangler dev --test-scheduled"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250101.0",
+    "@vitest/coverage-v8": "^3.2.4",
     "typescript": "^5.6.0",
+    "vitest": "^3.2.4",
     "wrangler": "^4.102.0"
   }
 }

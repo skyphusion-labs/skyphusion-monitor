@@ -1,20 +1,10 @@
 name: ci
 
-# PR gate for skyphusion-monitor (aviation-grade requirement; issue #11).
-#
-# deploy.yml only runs on push to main, so before this file PRs ran ZERO checks
-# and typecheck was local-only. This runs the same gate deploy.yml enforces
-# (`npm run typecheck`, tsc --noEmit -- tsc is not part of any test run, so a
-# type error would otherwise pass silently) on every PR, and is added as a
-# required status check on the aviation-grade-main ruleset AFTER it exists on
-# main (required-before-it-exists deadlocks every PR; land the workflow first,
-# then flip the ruleset).
-#
-# Private repo -> org fleet pool per CI policy (no fork PRs on a private repo).
-# No secrets needed: typecheck is offline.
-
+# PR + push gate: typecheck (tsc --noEmit). Public repo -> GitHub-hosted ubuntu-latest.
 on:
   pull_request:
+  push:
+    branches: [main]
 
 permissions:
   contents: read
@@ -24,9 +14,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  typecheck:
-    name: typecheck
-    runs-on: [self-hosted, fleet]
+  ci:
+    name: ci
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4

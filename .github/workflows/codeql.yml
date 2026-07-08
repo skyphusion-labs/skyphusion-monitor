@@ -14,7 +14,7 @@
 # workflow-level setup-node steps) resolves node from the runner itself. The
 # step-injection above stays as belt-and-suspenders for the advanced jobs.
 #
-# Private repo -> org fleet pool per CI policy (matches ci.yml / deploy.yml).
+# Public repo -> GitHub-hosted ubuntu-latest (fork-safe), never the fleet pool.
 
 name: CodeQL
 
@@ -39,7 +39,7 @@ concurrency:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    runs-on: [self-hosted, fleet]
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -69,7 +69,7 @@ jobs:
 
   code-quality:
     name: Code Quality (${{ matrix.language }})
-    runs-on: [self-hosted, fleet]
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
       fail-fast: false

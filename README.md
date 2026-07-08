@@ -2,7 +2,7 @@
 
 External **security-posture + uptime** monitor: a standalone Cloudflare Worker (cron, every 5 min)
 that probes the public skyphusion surfaces from CFs global edge -- a true *outside-the-fleet*
-vantage and a **separate failure domain** from the Hetzner fleet and from Gatus-on-dischord (which
+vantage and a **separate failure domain** from the Hetzner fleet and from internal Gatus (which
 sees the inside view). Chosen over a US Hetzner box (the retired nofx idea): $0, no box to manage,
 no cross-zone networking, better/global vantage.
 
@@ -20,8 +20,8 @@ no cross-zone networking, better/global vantage.
   - `play.skyphusion.org` (prism, an AI-spend surface), `chat.skyphusion.org` (free-tier
     OpenWebUI), and `status.skyphusion.org` (Gatus, internal topology) must likewise answer
     the Access login **302** (or 401/403) anonymously -- a `200`/app markup on any of them
-    means that Access gate dropped (monitor#17). The watt-soak hosts (`status-watt`,
-    `grafana-watt`) are deliberately excluded until they graduate from the fc#195 soak.
+    means that Access gate dropped (monitor#17). Soak hosts are deliberately excluded until they
+    graduate from pre-production monitoring.
 
 ## Alerting
 Publishes to **ntfy** (`MONITOR_TOPIC`) ONLY when a check fails its expectation (quiet when healthy).

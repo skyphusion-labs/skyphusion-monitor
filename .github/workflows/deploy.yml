@@ -2,9 +2,8 @@ name: deploy
 
 # Deploy the skyphusion-monitor Cloudflare Worker on a green push to main.
 #
-# skyphusion-monitor is a PRIVATE repo, so per fleet CI policy this runs on the
-# org-level self-hosted fleet pool ([self-hosted, fleet]), NOT a GitHub-hosted
-# runner. No fork PRs (private), and deploy is still gated to push-to-main.
+# Public repo -> GitHub-hosted ubuntu-latest (fork-safe), never the fleet pool.
+# Deploy is push-to-main only; secrets stay in GitHub Actions.
 #
 # Gate: `npm run typecheck` (tsc --noEmit) runs before deploy. tsc is not part of
 # any test run, so a type error would otherwise ship silently -- it must block.
@@ -38,7 +37,7 @@ concurrency:
 jobs:
   deploy:
     name: Deploy skyphusion-monitor worker
-    runs-on: [self-hosted, fleet]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
