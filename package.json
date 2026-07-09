@@ -2,7 +2,19 @@
   "name": "skyphusion-monitor",
   "version": "0.4.0",
   "private": true,
-  "description": "External security-posture + uptime monitor (Cloudflare Worker, cron) for the skyphusion public surfaces.",
+  "homepage": "https://github.com/skyphusion-labs/skyphusion-monitor",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/skyphusion-labs/skyphusion-monitor.git"
+  },
+  "keywords": [
+    "monitoring",
+    "uptime",
+    "cloudflare-workers",
+    "security",
+    "observability",
+    "ntfy"
+  ],
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
