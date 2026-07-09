@@ -29,7 +29,8 @@ const CHECKS: Check[] = [
   { name: "blog",         url: "https://skyphusion.net/",        ok: [200, 301, 302, 308], kind: "uptime" },
   { name: "playground",   url: "https://play.skyphusion.org/",   ok: [200, 302], kind: "uptime",
     requireHeaders: { "x-content-type-options": "nosniff" } },   // F4: nosniff on our workers 200
-  { name: "status-gatus", url: "https://status.skyphusion.org/", ok: [200, 302], kind: "uptime" },
+  { name: "status-gatus", url: "https://status.skyphusion.org/", ok: [200], kind: "uptime",
+    note: "public status board by design (fc#465); push API stays GATUS_PUSH_TOKEN gated" },
   { name: "authentik",    url: "https://auth.skyphusion.org/",   ok: [200, 302], kind: "uptime" },
   { name: "ntfy",         url: "https://ntfy.skyphusion.org/",   ok: [200], kind: "uptime" },
 
@@ -57,17 +58,14 @@ const CHECKS: Check[] = [
     bodyMustNotInclude: ["WebUI", "webui"], note: "302=Access-login (healthy, verified -> skyphusion.cloudflareaccess.com); 200/OpenWebUI markup = Access gate dropped" },
 
   // ---------- F2-class: Access must enforce on the remaining gated surfaces (monitor#17) ----------
-  // Live CF Access app inventory diffed against CHECKS 2026-07-04; all three verified
-  // answering the Access login 302 anonymously (body = the generic CF redirect page,
-  // marker-free). play = an AI-spend surface (prism on Unified Billing), chat = the
-  // free-tier OpenWebUI, status = the internal status view. Soak hosts are deliberately
-  // excluded until they graduate from pre-production monitoring.
+  // Live CF Access app inventory diffed against CHECKS 2026-07-04; verified answering the
+  // Access login 302 anonymously (body = the generic CF redirect page, marker-free).
+  // play = an AI-spend surface (prism on Unified Billing), chat = the free-tier OpenWebUI.
+  // status.skyphusion.org is intentionally PUBLIC (uptime-only via status-gatus above).
   { name: "F2.play-access", url: "https://play.skyphusion.org/", ok: [302, 401, 403], kind: "posture",
     bodyMustNotInclude: ["system-prompt", "sidebar-backdrop"], note: "302=Access-login (healthy); 200/prism markup = Access gate dropped on an AI-spend surface" },
   { name: "F2.chat-access", url: "https://chat.skyphusion.org/", ok: [302, 401, 403], kind: "posture",
     bodyMustNotInclude: ["WebUI", "webui"], note: "302=Access-login (healthy); 200/OpenWebUI markup = Access gate dropped" },
-  { name: "F2.status-access", url: "https://status.skyphusion.org/", ok: [302, 401, 403], kind: "posture",
-    bodyMustNotInclude: ["Gatus", "gatus"], note: "302=Access-login (healthy); 200/Gatus markup = Access gate dropped, internal topology exposed" },
 
   // ---------- in-worker auth regression tripwires ----------
   // These workers self-authenticate (so workers.dev is not a bypass). Assert their
