@@ -49,3 +49,11 @@ paged: the surfaces themselves stay covered by the uptime checks.
 - ~~Dead-mans-switch~~ DONE twice over: scheduled-run HC.io ping (monitor#3 part 1) + the
   mail-delivery dead-man (#278).
 - Widen posture checks as more Access-gated surfaces land.
+
+## Who this is for
+
+Fleet operators who want an **outside-the-fleet** vantage on public Skyphusion surfaces (uptime + Access-gate regressions), separate from internal Gatus.
+
+## Links
+
+- **Skyphusion Labs:** https://skyphusion.org · **Org:** https://github.com/skyphusion-labs
