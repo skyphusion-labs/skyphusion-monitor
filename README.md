@@ -57,3 +57,7 @@ Fleet operators who want an **outside-the-fleet** vantage on public Skyphusion s
 ## Links
 
 - **Skyphusion Labs:** https://skyphusion.org · **Org:** https://github.com/skyphusion-labs
+
+## License
+
+[AGPL-3.0-only](LICENSE) (C) 2026 Conrad Rockenhaus. Run a modified version as a network service and the AGPL has you offer users the corresponding source. See [NOTICE](NOTICE).
