@@ -31,8 +31,13 @@ npm run deploy      # wrangler deploy
 
 - **Cron-only.** Trigger is `*/5 * * * *`. `workers_dev` and `preview_urls` are off; the only
   route is the `monitor.skyphusion.org` custom domain so internal monitoring can poll `/health`.
+- **Config-driven (monitor#42).** The probe inventory is `config/monitors.json` (CI-validated,
+  bundled at build); tunables are `[vars]` with in-code defaults (`src/config.ts`).
+  `src/index.ts` is the engine only -- adding a surface is a config edit, never a src/ edit,
+  and an invalid inventory fails CLOSED (health RED + one deduped urgent alert, never a silent
+  empty run).
 - **Dead-man's-switch.** Each cron run writes its timestamp + counts to the `MONITOR_STATE` KV.
-  `/health` returns 503 if the last run is stale (>12m) or had failures.
+  `/health` returns 503 if the last run is stale (`HEALTH_STALE_MIN`, default 12m) or had failures.
 - **Alerts are quiet-when-healthy.** ntfy only on failure; posture regressions at `urgent`.
 
 ## Conventions

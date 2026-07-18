@@ -48,3 +48,12 @@ NTFY_URL = "https://ntfy.skyphusion.org"
 MONITOR_TOPIC = "skyphusion-uptime"
 # RUN_KEY gates the manual /run fetch endpoint (set to a non-empty secret-ish value to enable).
 RUN_KEY = ""
+# monitor#42 tunables -- every knob is a var (src/config.ts supplies the same
+# defaults when unset/invalid, so removing one can never break a run). The probe
+# INVENTORY itself is config/monitors.json (CI-validated, bundled at build).
+FETCH_TIMEOUT_MS = "12000"
+RETRY_DELAY_MS = "1500"
+HEALTH_STALE_MIN = "12"
+CERT_WARN_DAYS = "14"
+CERT_CHECK_INTERVAL_HOURS = "20"
+DEADMAN_FROM = "noreply@skyphusion.org"

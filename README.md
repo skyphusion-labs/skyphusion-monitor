@@ -7,21 +7,40 @@ sees the inside view). Chosen over a US Hetzner box (the retired nofx idea): $0,
 no cross-zone networking, better/global vantage.
 
 ## What it checks
-- **uptime** -- the public surfaces serve (2xx/3xx): apex + www, the blog (skyphusion.net),
-  play (AI Playground), status (Gatus), auth (Authentik), ntfy.
+
+**The probe inventory is `config/monitors.json`** (monitor#42) -- ~40 checks across every
+presently-online public surface (grounded in the live CF API inventory: worker custom domains,
+Access apps, DNS; 2026-07-18). Two kinds:
+
+- **uptime** -- the public surfaces serve what an outsider should get: the skyphusion +
+  vivijure sites and demos, the MUD worlds, common-thread, the status board, auth, ntfy,
+  the court-record site (rockenhaus.net), GitHub Pages, the Umami tracker path.
 - **security posture** (a change = regression, alerted as SECURITY):
-  - `vivijure.skyphusion.org/api/*` must answer **401/403** to an anonymous edge fetch -- a `200`
-    means the CF Access gate dropped (data-plane exposure).
-  - `vivijure-studio.skyphusion.workers.dev/api/*` must answer **404** -- the F1 tripwire: if
-    `workers_dev` is ever re-enabled, the unauthenticated backdoor reopens and this fires.
-  - `chat-plus.skyphusion.org` (openwebui-friends, trusted-email-header SSO) must answer the
-    Access login **302** (or 401/403) to an anonymous fetch -- a `200`/OpenWebUI markup means
-    the Access gate dropped and the friends instance is serving anon on Unified Billing.
-  - `play.skyphusion.org` (prism, an AI-spend surface) and `chat.skyphusion.org`
-    (free-tier OpenWebUI) must answer the Access login **302** (or 401/403) anonymously --
-    a `200`/app markup means that Access gate dropped (monitor#17).
+  - **F1 tripwires:** `workers_dev` must stay OFF where the custom domain is the only door
+    (vivijure-studio, grid-hub, prism/skyphusion-llm) -- a serve = the unauthenticated
+    backdoor reopened.
+  - **F2 Access gates:** anonymous fetches must hit the Access login **302** (or 401/403) on
+    vivijure, chat-plus, play, chat, search (SearXNG), analytics (Umami dashboard), grafana --
+    a `200`/app markup means the gate dropped.
+  - **AUTH self-auth tripwires:** in-worker auth must keep answering **401/403** anonymously
+    (email-inbound + postern domain, slate-search + sidvicious-search, the search-internal and
+    studio MCP doors, the studio control-plane API, crew-bus).
   - `status.skyphusion.org` (Gatus) is **intentionally public** (uptime-only); write API
     stays `GATUS_PUSH_TOKEN` bearer-gated.
+
+### Adding or changing a check (one place)
+
+Edit `config/monitors.json` -- schema is `CheckConfig` in `src/validate.ts` (`name`, `url`
+https-only, `ok[]`, `kind: uptime|posture`, optional `bodyMustNotInclude[]`,
+`requireHeaders{}`, `note`, `timeoutMs`). CI validates the file (`tests/config.test.ts`:
+parseable, unique names, posture-allowing-2xx must carry a content assertion) and the
+push-to-main deploy ships it. `src/index.ts` is the engine only -- zero estate hostnames in
+source. At runtime an invalid inventory **fails closed**: `/health` flips RED, one `urgent`
+ntfy fires (KV-deduped 6h), and no empty check set ever runs silently.
+
+Operational knobs are wrangler `[vars]` with safe in-code defaults (`src/config.ts`):
+`FETCH_TIMEOUT_MS`, `RETRY_DELAY_MS`, `HEALTH_STALE_MIN`, `CERT_WARN_DAYS`,
+`CERT_CHECK_INTERVAL_HOURS`, `DEADMAN_FROM`, `PROBE_USER_AGENT`.
 
 ## Alerting
 Publishes to **ntfy** (`MONITOR_TOPIC`) ONLY when a check fails its expectation (quiet when healthy).
@@ -48,7 +67,9 @@ paged: the surfaces themselves stay covered by the uptime checks.
 - ~~TLS cert-expiry checks~~ DONE (monitor#3 part 2, above).
 - ~~Dead-mans-switch~~ DONE twice over: scheduled-run HC.io ping (monitor#3 part 1) + the
   mail-delivery dead-man (#278).
-- Widen posture checks as more Access-gated surfaces land.
+- ~~Widen posture checks as more Access-gated surfaces land~~ DONE (monitor#42: full live
+  inventory + config-driven checks; new surfaces are a `config/monitors.json` edit).
+- Optional: ntfy title/priority/tag policy as config (still inline in the engine).
 
 ## Who this is for
 
