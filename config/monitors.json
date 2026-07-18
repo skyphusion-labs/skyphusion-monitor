@@ -1,5 +1,5 @@
 {
-  "$comment": "skyphusion-monitor probe inventory (monitor#42). Adding/changing a surface is an edit HERE (validated in CI by tests/config.test.ts, shipped by the push-to-main deploy) -- never a src/ edit. Schema: src/validate.ts CheckConfig. Inventory grounded in the live CF API pull + anonymous probes 2026-07-18: worker custom domains, Access apps, DNS. Deliberately absent: monitor.skyphusion.org (self-probe is circular; internal Gatus polls /health), hooks-* doorbell endpoints (crew-bus delivery accounting owns that signal; transport rethink crew-bus#40), imap./smtp. (TCP, fleet Gatus lane), rockenhaus.org (parked zone, no live surface).",
+  "$comment": "skyphusion-monitor probe inventory (monitor#42). Adding/changing a surface is an edit HERE (validated in CI by tests/config.test.ts, shipped by the push-to-main deploy) -- never a src/ edit. Schema: src/validate.ts CheckConfig. Inventory grounded in the live CF API pull + anonymous probes 2026-07-18: worker custom domains, Access apps, DNS. Deliberately absent: monitor.skyphusion.org (self-probe is circular; internal Gatus polls /health), hooks-* doorbell endpoints (crew-bus delivery accounting owns that signal; transport rethink crew-bus#40), imap./smtp. (TCP, fleet Gatus lane), rockenhaus.org (parked zone, no live surface). VANTAGE LIMITATION (learned live, first #42 deploy): a 401-asserting self-auth tripwire against a *.workers.dev URL is NOT probeable from this Worker (sibling workers.dev fetches land in the CF block band, not the origin's real status; only checks whose EXPECTED set is the block/disabled band, the F1 tripwires, are honest here) -- slate-search + sidvicious-search self-auth coverage therefore belongs to the fleet Gatus vantage, tracked in monitor#44.",
   "checks": [
     { "name": "intro-apex", "url": "https://skyphusion.org/", "ok": [200, 301, 302, 308], "kind": "uptime" },
     { "name": "intro-www", "url": "https://www.skyphusion.org/", "ok": [200, 301, 302, 308], "kind": "uptime" },
@@ -64,10 +64,6 @@
       "bodyMustNotInclude": ["\"from\"", "\"subject\"", "\"body\""], "note": "email API must require a token; 200 = mailbox exposure. 404 = workers.dev disabled, also healthy" },
     { "name": "AUTH.postern-domain.messages", "url": "https://postern.skyphusion.org/api/messages", "ok": [401, 403], "kind": "posture",
       "bodyMustNotInclude": ["\"from\"", "\"subject\"", "\"body\""], "note": "custom-domain twin of AUTH.email-inbound.messages; 200 = mailbox exposure" },
-    { "name": "AUTH.slate-search.root", "url": "https://slate-search.skyphusion.workers.dev/", "ok": [401, 403], "kind": "posture",
-      "note": "workers_dev is intentionally ON (pinned, slate#57) because the worker self-authenticates; 200+results = auth regression. Replaces the retired vivijure-search check (worker deleted 2026-07-03)" },
-    { "name": "AUTH.sidvicious-search.root", "url": "https://sidvicious-search.skyphusion.workers.dev/", "ok": [401, 403], "kind": "posture",
-      "note": "workers_dev intentionally ON (pinned, SidVicious_exe#12); self-authenticates; 200+results = auth regression" },
     { "name": "AUTH.search-internal.mcp", "url": "https://search-internal.vivijure.com/mcp", "ok": [401, 403], "kind": "posture",
       "note": "internal search MCP is bearer-gated; 200 = the internal corpus (fleet-chezmoi, crew-secrets docs) is open" },
     { "name": "AUTH.studio-mcp.vivijure", "url": "https://studio-mcp.vivijure.com/mcp", "ok": [401, 403], "kind": "posture",

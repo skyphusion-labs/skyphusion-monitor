@@ -67,7 +67,11 @@ async function recordRun(env: Env, results: Result[]): Promise<void> {
   const postureFails = fails.filter(f => f.kind === "posture");
   await env.MONITOR_STATE.put("last-run",
     JSON.stringify({ ts: Date.now(), checks: results.length, failures: fails.length,
-      posture: postureFails.length, failNames: fails.map(f => f.name) }),
+      posture: postureFails.length, failNames: fails.map(f => f.name),
+      // Vantage surprises must self-diagnose from KV (the first #42 deploy
+      // failed 2 checks with no way to see WHY without code archaeology).
+      // Internal state only; /health still never exposes names or reasons.
+      failReasons: fails.map(f => `${f.name}: ${f.reason ?? `status ${f.status}`}`) }),
     { expirationTtl: 86_400 });
 }
 
