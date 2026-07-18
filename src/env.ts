@@ -22,4 +22,14 @@ export interface Env {
   // Certificates Read ONLY -- per-function, never the account admin token). Set via
   // `wrangler secret put CF_CERT_READ_TOKEN`. Empty/unset -> the cert probe no-ops.
   CF_CERT_READ_TOKEN: string; // secret
+
+  // ---- tunables (monitor#42): every knob is a var with a safe default in src/config.ts;
+  // ---- all optional so an unset var can never break a run. Values are strings (wrangler vars).
+  FETCH_TIMEOUT_MS?: string;         // per-probe fetch timeout (default 12000)
+  RETRY_DELAY_MS?: string;           // delay before the single retry (default 1500)
+  HEALTH_STALE_MIN?: string;         // /health staleness window in minutes (default 12)
+  CERT_WARN_DAYS?: string;           // warn when a cert expires within N days (default 14)
+  CERT_CHECK_INTERVAL_HOURS?: string; // cert sweep cadence in hours (default 20; keep <24)
+  DEADMAN_FROM?: string;             // allowed envelope sender for the delivery dead-man
+  PROBE_USER_AGENT?: string;         // probe User-Agent override
 }
