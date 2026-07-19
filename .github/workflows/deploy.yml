@@ -5,7 +5,9 @@ name: deploy
 # Public repo -> GitHub-hosted ubuntu-latest (fork-safe), never the fleet pool.
 # Deploy is tag-only: a bare merge to main NEVER redeploys production. Cut a
 # SemVer tag to ship (git tag -a v0.1.0 -m "..." && git push origin v0.1.0).
-# workflow_dispatch is kept for a deliberate manual redeploy.
+# workflow_dispatch may run the gate (npm ci / typecheck) but the deploy step
+# is guarded with `if: startsWith(github.ref, 'refs/tags/v')` so a manual
+# dispatch from a non-tag ref never ships (same pattern as common-thread).
 #
 # Gate: `npm run typecheck` (tsc --noEmit) runs before deploy. tsc is not part of
 # any test run, so a type error would otherwise ship silently -- it must block.
@@ -50,4 +52,6 @@ jobs:
       - run: npm ci
       # Gate: do not ship a worker that does not typecheck.
       - run: npm run typecheck
-      - run: npx wrangler deploy
+      - name: Deploy worker
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: npx wrangler deploy
