@@ -1,15 +1,14 @@
 name: deploy
 
-# Deploy the skyphusion-monitor Cloudflare Worker on a green push to main.
+# Deploy the skyphusion-monitor Cloudflare Worker on a pushed version tag (v*).
 #
 # Public repo -> GitHub-hosted ubuntu-latest (fork-safe), never the fleet pool.
-# Deploy is push-to-main only; secrets stay in GitHub Actions.
+# Deploy is tag-only: a bare merge to main NEVER redeploys production. Cut a
+# SemVer tag to ship (git tag -a v0.1.0 -m "..." && git push origin v0.1.0).
+# workflow_dispatch is kept for a deliberate manual redeploy.
 #
 # Gate: `npm run typecheck` (tsc --noEmit) runs before deploy. tsc is not part of
 # any test run, so a type error would otherwise ship silently -- it must block.
-#
-# Why this exists: merged PRs were not reaching the live worker (caught running
-# stale 2026-07-02, hand-redeployed). This makes main == live automatically.
 #
 # Required repo secrets (Settings -> Secrets and variables -> Actions):
 #   CLOUDFLARE_API_TOKEN   -- per-function, DEPLOY-scoped token for this worker:
@@ -25,13 +24,14 @@ name: deploy
 
 on:
   push:
-    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: deploy-skyphusion-monitor-main
+  group: deploy-skyphusion-monitor-tag
   cancel-in-progress: false
 
 jobs:
