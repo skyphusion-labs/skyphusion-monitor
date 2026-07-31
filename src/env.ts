@@ -22,6 +22,18 @@ export interface Env {
   // Certificates Read ONLY -- per-function, never the account admin token). Set via
   // `wrangler secret put CF_CERT_READ_TOKEN`. Empty/unset -> the cert probe no-ops.
   CF_CERT_READ_TOKEN: string; // secret
+  // workers.dev coverage sweep (fc#1194 / fc#1180 F2): READ-scoped CF API token carrying
+  // Account > Workers Scripts > Read ONLY -- per-function, never the deploy token and never
+  // the shared crew token (that one has full data-plane WRITE reach and has no business
+  // inside an internet-facing Worker). Set via `wrangler secret put CF_WORKERS_READ_TOKEN`.
+  // Unset -> the coverage verdict is UNKNOWN, which FAILS (posture) rather than no-opping:
+  // an absent credential must never read as "no Workers are exposed".
+  CF_WORKERS_READ_TOKEN: string; // secret
+  // The account id the coverage sweep enumerates. A SECRET rather than a var because this
+  // repo is PUBLIC and the standing convention is that account_id is never hardcoded
+  // (wrangler itself reads it from CLOUDFLARE_ACCOUNT_ID at deploy time, which does not
+  // reach the runtime). Set via `wrangler secret put CF_ACCOUNT_ID`.
+  CF_ACCOUNT_ID: string; // secret
 
   // ---- tunables (monitor#42): every knob is a var with a safe default in src/config.ts;
   // ---- all optional so an unset var can never break a run. Values are strings (wrangler vars).
@@ -30,6 +42,7 @@ export interface Env {
   HEALTH_STALE_MIN?: string;         // /health staleness window in minutes (default 12)
   CERT_WARN_DAYS?: string;           // warn when a cert expires within N days (default 14)
   CERT_CHECK_INTERVAL_HOURS?: string; // cert sweep cadence in hours (default 20; keep <24)
+  WORKERSDEV_SWEEP_INTERVAL_MIN?: string; // workers.dev coverage sweep cadence (default 60)
   DEADMAN_FROM?: string;             // allowed envelope sender for the delivery dead-man
   PROBE_USER_AGENT?: string;         // probe User-Agent override
 }

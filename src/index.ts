@@ -7,8 +7,9 @@
 // is a wrangler var with a safe default (src/config.ts). No estate hostname or
 // magic number belongs here.
 import type { Env } from "./env";
-import { loadChecks, tunables, type Tunables } from "./config";
+import { loadChecks, loadWorkersDevPolicy, tunables, type Tunables } from "./config";
 import { assessResponse, type CheckConfig, type CheckKind } from "./validate";
+import { assessWorkersDevCoverage, coverageSignature, summarizeCoverage, type SubdomainState } from "./coverage";
 
 interface Result { name: string; kind: CheckKind; url: string; status: number | null; expected: number[]; ok: boolean; reason?: string; note?: string }
 
@@ -114,6 +115,22 @@ async function pingDeadman(url: string): Promise<void> {
   }
 }
 
+// --- Cloudflare API helper ---------------------------------------------------------------------
+// Shared by the cert-expiry probe and the workers.dev coverage sweep. Each caller passes its OWN
+// per-function token; there is deliberately no ambient/default credential here.
+
+interface CfEnvelope<T> { success: boolean; result: T | null; result_info?: { total_count?: number; page?: number; total_pages?: number } }
+
+async function cfApi<T>(token: string, path: string, ua: string): Promise<CfEnvelope<T>> {
+  const res = await fetch(`https://api.cloudflare.com/client/v4${path}`, {
+    headers: { Authorization: `Bearer ${token}`, "user-agent": ua },
+  });
+  if (!res.ok) throw new Error(`CF API ${path}: HTTP ${res.status}`);
+  const j = await res.json() as CfEnvelope<T>;
+  if (!j.success || j.result === null || j.result === undefined) throw new Error(`CF API ${path}: success=false`);
+  return j;
+}
+
 // --- TLS cert-expiry probe (monitor#3 part 2) ------------------------------------------------
 // Daily (KV-gated) sweep of every active zone's ssl/certificate_packs via the CF API; ntfy-warns
 // when any ACTIVE cert is within certWarnDays of expires_on. Info-only on /health (no status
@@ -123,27 +140,19 @@ async function pingDeadman(url: string): Promise<void> {
 
 interface CertState { ts: number; zones?: number; soonestDays?: number | null; warned?: number; error?: string }
 
-async function cfGet<T>(env: Env, path: string): Promise<T[]> {
-  const res = await fetch(`https://api.cloudflare.com/client/v4${path}`, {
-    headers: { Authorization: `Bearer ${env.CF_CERT_READ_TOKEN}`, "user-agent": "skyphusion-monitor/cert-expiry (+monitor#3)" },
-  });
-  if (!res.ok) throw new Error(`CF API ${path}: HTTP ${res.status}`);
-  const j = await res.json() as { success: boolean; result: T[] | null };
-  if (!j.success || !j.result) throw new Error(`CF API ${path}: success=false`);
-  return j.result;
-}
+const CERT_UA = "skyphusion-monitor/cert-expiry (+monitor#3)";
 
 async function maybeCheckCerts(env: Env, t: Tunables, now: number): Promise<void> {
   if (!env.CF_CERT_READ_TOKEN) return; // no-op until the secret is set
   const raw = await env.MONITOR_STATE.get("cert-check");
   if (raw && now - (JSON.parse(raw) as CertState).ts < t.certCheckIntervalMs) return;
   try {
-    const zones = await cfGet<{ id: string; name: string }>(env, "/zones?status=active&per_page=50");
+    const zones = (await cfApi<{ id: string; name: string }[]>(env.CF_CERT_READ_TOKEN, "/zones?status=active&per_page=50", CERT_UA)).result!;
     const warnings: string[] = [];
     let soonestDays: number | null = null;
     for (const z of zones) {
-      const packs = await cfGet<{ status: string; certificates?: { expires_on?: string }[] }>(
-        env, `/zones/${z.id}/ssl/certificate_packs`);
+      const packs = (await cfApi<{ status: string; certificates?: { expires_on?: string }[] }[]>(
+        env.CF_CERT_READ_TOKEN, `/zones/${z.id}/ssl/certificate_packs`, CERT_UA)).result!;
       for (const p of packs) {
         if (p.status !== "active") continue;
         for (const c of p.certificates ?? []) {
@@ -166,16 +175,135 @@ async function maybeCheckCerts(env: Env, t: Tunables, now: number): Promise<void
   }
 }
 
+// --- workers.dev coverage sweep (fc#1194 / fc#1180 F2) -----------------------------------------
+// The one check in this Worker that is NOT a probe, because it CANNOT be one: Cloudflare answers
+// 404 `error code: 1042` for every sibling *.workers.dev subrequest, enabled and disabled alike
+// (measured, see config/monitors.json $comment and src/coverage.ts). So the Worker LIST and the
+// workers.dev state both come from the API, which makes coverage DERIVED: a Worker deployed
+// tomorrow is assessed the moment it exists rather than waiting for someone to remember it.
+//
+// Every failure mode here is LOUD. Missing credential, HTTP error, success-with-zero-results,
+// truncated enumeration, non-boolean state: all of them FAIL the posture check. There is no
+// path where this degrades to a quiet skip, because a quiet skip is indistinguishable from
+// "nothing is exposed", which is the exact defect this replaces.
+
+interface CoverageState {
+  ts: number;
+  ok: boolean;
+  scripts: number;
+  allowed: number;
+  enabled: number;
+  sig: string;
+  /** Human summary INCLUDING script names -- internal (KV, ntfy, gated /run) only, never /health. */
+  summary: string;
+  error?: string;
+}
+
+const COVERAGE_UA = "skyphusion-monitor/workers-dev-coverage (+fc#1194)";
+const COVERAGE_KEY = "workersdev-coverage";
+const COVERAGE_CHECK_NAME = "COVER.workers-dev";
+// Bound concurrent subrequests; the sweep is 1 + N calls and N grows with the account.
+const COVERAGE_BATCH = 8;
+
+async function sweepWorkersDev(env: Env, now: number): Promise<CoverageState> {
+  const { policy, errors } = loadWorkersDevPolicy();
+  if (errors.length) throw new Error(`workersDev policy invalid: ${errors.join("; ")}`);
+
+  const list = await cfApi<{ id?: string }[]>(env.CF_WORKERS_READ_TOKEN, `/accounts/${env.CF_ACCOUNT_ID}/workers/scripts`, COVERAGE_UA);
+  const names = (list.result ?? []).map((s) => s.id).filter((n): n is string => typeof n === "string" && n.length > 0).sort();
+  // A paginated list read with no total_count check is a truncated census. This endpoint does
+  // not paginate today; assert that rather than assume it forever.
+  const total = list.result_info?.total_count;
+  if (typeof total === "number" && total > names.length) {
+    throw new Error(`worker enumeration truncated: total_count ${total} > ${names.length} returned`);
+  }
+
+  const states: SubdomainState[] = [];
+  for (let i = 0; i < names.length; i += COVERAGE_BATCH) {
+    const batch = names.slice(i, i + COVERAGE_BATCH);
+    states.push(...await Promise.all(batch.map(async (name): Promise<SubdomainState> => {
+      const r = await cfApi<{ enabled?: unknown; previews_enabled?: unknown }>(
+        env.CF_WORKERS_READ_TOKEN,
+        `/accounts/${env.CF_ACCOUNT_ID}/workers/scripts/${encodeURIComponent(name)}/subdomain`,
+        COVERAGE_UA);
+      // Coercing a missing field to false would invent the reassuring answer. Refuse instead.
+      if (typeof r.result?.enabled !== "boolean") throw new Error(`${name}: subdomain.enabled is not a boolean`);
+      const previews = r.result?.previews_enabled;
+      return { script: name, enabled: r.result.enabled, previewsEnabled: typeof previews === "boolean" ? previews : null };
+    })));
+  }
+
+  const findings = assessWorkersDevCoverage(states, policy);
+  return {
+    ts: now,
+    ok: findings.length === 0,
+    scripts: states.length,
+    allowed: policy.allowed.length,
+    enabled: states.filter((s) => s.enabled).length,
+    sig: coverageSignature(findings),
+    summary: summarizeCoverage(findings, states.length),
+  };
+}
+
+/**
+ * Returns the current verdict, refreshing it at most once per sweep interval.
+ * `alertable` is true only on a run that actually re-swept, so a STANDING failure pages hourly
+ * instead of every 5 minutes while /health stays RED continuously.
+ */
+async function coverageVerdict(env: Env, t: Tunables, now: number): Promise<{ state: CoverageState; alertable: boolean }> {
+  const raw = await env.MONITOR_STATE.get(COVERAGE_KEY);
+  const prev = raw ? JSON.parse(raw) as CoverageState : null;
+  if (prev && now - prev.ts < t.workersDevSweepIntervalMs) return { state: prev, alertable: false };
+
+  let next: CoverageState;
+  if (!env.CF_WORKERS_READ_TOKEN || !env.CF_ACCOUNT_ID) {
+    // NOT a no-op. An absent credential means the state is unmeasured, and unmeasured is not clean.
+    next = { ts: now, ok: false, scripts: 0, allowed: 0, enabled: 0, sig: "credential-missing",
+      summary: "CF_WORKERS_READ_TOKEN / CF_ACCOUNT_ID unset -- workers.dev state UNMEASURED, not clean",
+      error: "coverage credential unset" };
+  } else {
+    try {
+      next = await sweepWorkersDev(env, now);
+    } catch (e) {
+      next = { ts: now, ok: false, scripts: 0, allowed: 0, enabled: 0, sig: "sweep-error",
+        summary: `workers.dev coverage sweep FAILED: ${String(e)}`, error: String(e) };
+    }
+  }
+  await env.MONITOR_STATE.put(COVERAGE_KEY, JSON.stringify(next), { expirationTtl: 86_400 });
+  return { state: next, alertable: !next.ok };
+}
+
+/** Project the stored verdict into the run's result set, so /health and alerts both see it. */
+function coverageResult(state: CoverageState | null, t: Tunables, now: number): Result {
+  const base = { name: COVERAGE_CHECK_NAME, kind: "posture" as CheckKind,
+    url: "https://api.cloudflare.com/client/v4/accounts/.../workers/scripts", status: null, expected: [] as number[] };
+  if (!state) {
+    return { ...base, ok: false, reason: "no workers.dev coverage verdict recorded yet -- state UNKNOWN, not clean" };
+  }
+  // Dead-man for the sweep itself: a verdict that stopped refreshing is not a passing verdict.
+  if (now - state.ts > t.workersDevStaleMs) {
+    return { ...base, ok: false, reason: `coverage verdict is STALE (${Math.round((now - state.ts) / 60_000)}m old) -- state UNKNOWN, not clean` };
+  }
+  return { ...base, ok: state.ok, reason: state.ok ? undefined : state.summary,
+    note: state.ok ? undefined : "workers.dev is not covered by Access; see config/monitors.json workersDev" };
+}
+
 export default {
   async scheduled(_e: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     const t = tunables(env);
     const { checks, errors } = loadChecks();
-    if (errors.length) { await recordConfigFailure(env, errors); return; } // fail closed, no dead-man ping
-    const results = await runAll(checks, t);
+    const { errors: policyErrors } = loadWorkersDevPolicy();
+    const configErrors = [...errors, ...policyErrors];
+    if (configErrors.length) { await recordConfigFailure(env, configErrors); return; } // fail closed, no dead-man ping
+    const now = Date.now();
+    // Awaited, not waitUntil: its verdict is part of THIS run's result set.
+    const coverage = await coverageVerdict(env, t, now);
+    const results = [...await runAll(checks, t), coverageResult(coverage.state, t, now)];
     const fails = results.filter(r => !r.ok);
+    const alertFails = fails.filter(f => f.name !== COVERAGE_CHECK_NAME || coverage.alertable);
     ctx.waitUntil(recordRun(env, results));
-    if (fails.length) ctx.waitUntil(alert(env, fails));
-    ctx.waitUntil(maybeCheckCerts(env, t, Date.now())); // monitor#3 part 2: daily-gated inside
+    if (alertFails.length) ctx.waitUntil(alert(env, alertFails));
+    ctx.waitUntil(maybeCheckCerts(env, t, now)); // monitor#3 part 2: daily-gated inside
     // scheduled dead-man (monitor#3 part 1): reaching here means the cron FIRED and the run
     // COMPLETED -> ping the HC.io check so it does not page. This signals MONITOR liveness,
     // NOT check health -- surface failures are already handled by alert()/ntfy + /health RED;
@@ -202,8 +330,9 @@ export default {
       // Gatus polls this: 200 = healthy, 503 = monitor stale (cron stopped = dead-man)
       // or the last run had failures. Counts only -- never leak check names.
       const { checks, errors } = loadChecks();
+      const { errors: policyErrors } = loadWorkersDevPolicy();
       const raw = await env.MONITOR_STATE.get("last-run");
-      const h: Record<string, unknown> = { service: "skyphusion-monitor", checks: checks.length, configValid: !errors.length };
+      const h: Record<string, unknown> = { service: "skyphusion-monitor", checks: checks.length, configValid: !errors.length && !policyErrors.length };
       if (!raw) return Response.json({ ...h, ok: false, reason: "no run recorded yet" }, { status: 503, headers: { "cache-control": "no-store" } });
       const last = JSON.parse(raw) as { ts: number; checks: number; failures: number; posture?: number; configError?: boolean };
       const ageMs = Date.now() - last.ts;
@@ -215,17 +344,28 @@ export default {
       const certRaw = await env.MONITOR_STATE.get("cert-check");
       const cert = certRaw ? (() => { const c = JSON.parse(certRaw) as CertState;
         return { soonestDays: c.soonestDays ?? null, warned: c.warned ?? 0, probeError: !!c.error, ageSec: Math.round((Date.now() - c.ts) / 1000) }; })() : null;
-      return Response.json({ ...h, ok, lastRunTs: last.ts, ageSec: Math.round(ageMs / 1000), failures: last.failures, posture: last.posture ?? 0, stale, sick, configError: !!last.configError, cert },
+      // workers.dev coverage (fc#1194): COUNTS + verdict only. The summary names scripts, so it
+      // stays out of this response exactly like check names and zone names do.
+      const covRaw = await env.MONITOR_STATE.get(COVERAGE_KEY);
+      const coverage = covRaw ? (() => { const c = JSON.parse(covRaw) as CoverageState;
+        return { ok: c.ok, scripts: c.scripts, allowed: c.allowed, enabled: c.enabled, probeError: !!c.error,
+          ageSec: Math.round((Date.now() - c.ts) / 1000) }; })() : null;
+      return Response.json({ ...h, ok, lastRunTs: last.ts, ageSec: Math.round(ageMs / 1000), failures: last.failures, posture: last.posture ?? 0, stale, sick, configError: !!last.configError, cert, coverage },
         { status: ok ? 200 : 503, headers: { "cache-control": "no-store" } });
     }
     if (url.pathname === "/run") {
       if (!env.RUN_KEY || url.searchParams.get("key") !== env.RUN_KEY) return new Response("forbidden", { status: 403 });
       const { checks, errors } = loadChecks();
-      if (errors.length) { await recordConfigFailure(env, errors); return Response.json({ configErrors: errors }, { status: 500 }); }
-      const results = await runAll(checks, t);
+      const { errors: policyErrors } = loadWorkersDevPolicy();
+      const configErrors = [...errors, ...policyErrors];
+      if (configErrors.length) { await recordConfigFailure(env, configErrors); return Response.json({ configErrors }, { status: 500 }); }
+      const now = Date.now();
+      const coverage = await coverageVerdict(env, t, now);
+      const results = [...await runAll(checks, t), coverageResult(coverage.state, t, now)];
       const fails = results.filter(r => !r.ok);
+      const alertFails = fails.filter(f => f.name !== COVERAGE_CHECK_NAME || coverage.alertable);
       await recordRun(env, results);
-      if (fails.length) await alert(env, fails);
+      if (alertFails.length) await alert(env, alertFails);
       return Response.json({ failures: fails.length, results }, { headers: { "cache-control": "no-store" } });
     }
     return new Response("skyphusion-monitor", { status: 200 });

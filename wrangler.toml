@@ -16,6 +16,14 @@
 #   ONLY) for the TLS cert-expiry probe (monitor#3 part 2) -> `wrangler secret put
 #   CF_CERT_READ_TOKEN`. Daily KV-gated sweep of active zones' certificate_packs; ntfy-warns
 #   inside 14d of expires_on. Per-function token; unset -> probe no-ops.
+# Secret: CF_WORKERS_READ_TOKEN -- READ-scoped CF API token carrying Account > Workers Scripts >
+#   Read ONLY, for the workers.dev coverage sweep (fc#1194 / fc#1180 F2) -> `wrangler secret put
+#   CF_WORKERS_READ_TOKEN`. NEVER the deploy token and never the shared crew token (that one has
+#   full data-plane WRITE reach). Unset -> the coverage verdict is UNKNOWN, which FAILS the
+#   posture check rather than no-opping: an absent credential must not read as "nothing exposed".
+# Secret: CF_ACCOUNT_ID -- the account the coverage sweep enumerates -> `wrangler secret put
+#   CF_ACCOUNT_ID`. A SECRET, not a var: this repo is PUBLIC and account_id is never hardcoded
+#   (wrangler reads CLOUDFLARE_ACCOUNT_ID at DEPLOY time, which does not reach the runtime).
 name = "skyphusion-monitor"
 main = "src/index.ts"
 compatibility_date = "2026-06-01"
@@ -56,4 +64,7 @@ RETRY_DELAY_MS = "1500"
 HEALTH_STALE_MIN = "12"
 CERT_WARN_DAYS = "14"
 CERT_CHECK_INTERVAL_HOURS = "20"
+# workers.dev coverage sweep cadence (fc#1194). The verdict is projected into EVERY 5-minute
+# run, so /health stays RED between sweeps; this only bounds how often the CF API is polled.
+WORKERSDEV_SWEEP_INTERVAL_MIN = "60"
 DEADMAN_FROM = "noreply@skyphusion.org"
