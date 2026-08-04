@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.6.1
+
+**fix(health): `/health` sick includes uptime failures (#58).**
+
+- Root cause: `sick = (last.posture ?? last.failures) > 0`. When `posture` was `0` and
+  `failures` was `N` (uptime red, posture clean), nullish coalescing kept `0`, so `sick`
+  stayed false and Gatus saw `ok: true` while the same payload reported `failures: N`.
+- `sick` is now `(failures ?? 0) > 0 || !!configError`. `posture` remains a separate severity
+  count; it no longer gates whether the board goes red.
+- Unit test pins the live shape (`posture: 0, failures: 2`) and a CONTROL that the old form
+  still evaluates false there.
+
 ## v0.6.0
 
 **workers.dev coverage is now DERIVED from the Cloudflare API, not declared (fc#1194, fc#1180 F2).**
