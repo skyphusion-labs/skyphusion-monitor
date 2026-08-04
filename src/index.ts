@@ -13,6 +13,22 @@ import { assessWorkersDevCoverage, coverageSignature, summarizeCoverage, type Su
 
 interface Result { name: string; kind: CheckKind; url: string; status: number | null; expected: number[]; ok: boolean; reason?: string; note?: string }
 
+/**
+ * Derive /health `sick` from the last-run record.
+ *
+ * `ok`/`sick` mean "the board is clean" (what Gatus polls), not "posture-only".
+ * Uptime failures must flip sick. The old form `(posture ?? failures) > 0` fails
+ * that when posture is 0 and failures is N: `??` does not substitute for 0.
+ * Issue #58.
+ */
+export function isSickFromLastRun(last: {
+  failures: number;
+  posture?: number;
+  configError?: boolean;
+}): boolean {
+  return (last.failures ?? 0) > 0 || !!last.configError;
+}
+
 async function attemptCheck(c: CheckConfig, t: Tunables): Promise<Result> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), c.timeoutMs ?? t.fetchTimeoutMs);
@@ -337,7 +353,10 @@ export default {
       const last = JSON.parse(raw) as { ts: number; checks: number; failures: number; posture?: number; configError?: boolean };
       const ageMs = Date.now() - last.ts;
       const stale = ageMs > t.healthStaleMs;
-      const sick = (last.posture ?? last.failures) > 0;   // posture regression only
+      // Gatus polls ok/sick. Any check failure (uptime OR posture) must flip the board;
+      // posture alone is wrong: `(posture ?? failures)` stays 0 when posture is 0 and
+      // failures is 2 (?? only substitutes for null/undefined). Issue #58 / fc#1194 theme.
+      const sick = isSickFromLastRun(last);
       const ok = !stale && !sick;
       // cert-expiry (monitor#3 part 2): INFO-ONLY, never flips /health status. Counts/days only,
       // no zone names (same never-leak-check-names rule as above).
