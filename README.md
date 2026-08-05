@@ -26,8 +26,10 @@ Access apps, DNS; 2026-07-18). Two kinds:
     `workers.dev` on turns the monitor RED without anyone remembering to add it. See
     "workers.dev coverage" below.
   - **F2 Access gates:** anonymous fetches must hit the Access login **302** (or 401/403) on
-    vivijure, chat-plus, play, chat, search (SearXNG), analytics (Umami dashboard), grafana --
-    a `200`/app markup means the gate dropped.
+    vivijure, chat-plus, chat, search (SearXNG), analytics (Umami dashboard), grafana -- a
+    `200`/app markup means the gate dropped. **Exception -- play is public:**
+    `F2.play-public` expects **200** (`AUTH_MODE=public`, first-party auth; Access retired on
+    play).
   - **AUTH self-auth tripwires:** in-worker auth must keep answering **401/403** anonymously
     (the postern custom domain, the search-internal and studio MCP doors, the studio
     control-plane API, crew-bus). These are all CUSTOM-domain hostnames, which this vantage
