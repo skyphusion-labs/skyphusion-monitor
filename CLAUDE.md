@@ -10,12 +10,23 @@ An external **security-posture + uptime** monitor: a standalone Cloudflare Worke
 internal Gatus (inside view). It runs at `monitor.skyphusion.org` and was chosen over a US
 Hetzner box (the retired nofx idea): $0, no box, no cross-zone networking.
 
-> Note: this is NOT Gatus. Internal Gatus sees the inside view; `status.skyphusion.org` is
+> Note: this is NOT Gatus. Internal Gatus (`status.skyphusion.org`) is the inside-fleet view and is
 > Access-gated. This Worker is the complementary outside view; both alert via ntfy.
+
+## Posture notes agents get wrong
+
+- **Most F2 Access-gate checks** expect anonymous `302` / `401` / `403` (gate healthy).
+- **`F2.play-public` is the opposite:** `https://play.skyphusion.org/` expects **`200`**. Prism is
+  `AUTH_MODE=public` (first-party signup + mandatory per-user BYOK); Access was retired on play.
+  Treating play as Access-gated is a defect in the inventory, not a prod outage.
+- Probe inventory lives in `config/monitors.json` (config-driven; see README). Do not hardcode a
+  surface list in source.
 
 ## Documentation map
 
 - `README.md` -- what it checks (uptime + posture), the alerting model, deploy, and follow-ups.
+- Internal Gatus / fleet status posture is owned with fleet monitors (watt/boon); this repo is the
+  outside CF edge vantage only.
 
 ## Commands
 
