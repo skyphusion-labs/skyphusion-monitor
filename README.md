@@ -65,7 +65,7 @@ ntfy publish token scoped to the alerts topic).
   `HC_DEADMAN_PING_URL`, `HC_CRON_PING_URL`, `CF_CERT_READ_TOKEN`, and (fc#1194)
   `CF_WORKERS_READ_TOKEN` + `CF_ACCOUNT_ID`. **Set the last two BEFORE tagging a release**:
   the coverage check fails CLOSED without them, which is deliberate but will page.
-- Cron `*/5 * * * *`. No public route (cron-only); `/health` + gated `/run?key=` exist if a route is added.
+- Cron `*/5 * * * *`. Cron primary; also public host `monitor.skyphusion.org`; `/health` + gated `/run?key=` exist if a route is added.
 
 ## TLS cert-expiry probe (monitor#3 part 2)
 Workers `fetch` cannot read the peer cert, so expiry comes from the CF API instead: a daily

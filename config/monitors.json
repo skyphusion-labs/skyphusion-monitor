@@ -15,7 +15,7 @@
       },
       {
         "script": "sidvicious-search",
-        "reason": "UNDECLARED-BY-CONFIG, recorded not blessed: SidVicious_exe/search-worker/wrangler.toml omits workers_dev entirely and absent means TRUE, so this exposure is the accidental default rather than a decision. Gated only by the SEARCH_SECRET header (401 to anon from outside), and workers.dev is its whole public surface (no routes). Needs an explicit true-or-false decision in that repo",
+        "reason": "UNDECLARED-BY-CONFIG, recorded not blessed: SidVicious_exe/search-worker/wrangler.toml pins workers_dev=true entirely and absent means TRUE, so this exposure is the accidental default rather than a decision. Gated only by the SEARCH_SECRET header (401 to anon from outside), and workers.dev is its whole public surface (no routes). Needs an explicit true-or-false decision in that repo",
         "coverage": "fleet Gatus vantage, monitor#44 -- this Worker cannot probe the 401 (CF 1042); tracked in fc#1180 F2"
       }
     ]
