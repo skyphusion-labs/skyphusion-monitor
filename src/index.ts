@@ -115,17 +115,29 @@ async function recordConfigFailure(env: Env, errors: string[]): Promise<void> {
 // key: this Worker holds ONLY the check's ping URL (HC_DEADMAN_PING_URL secret), NEVER the HC.io
 // management key. The allowed envelope sender is the DEADMAN_FROM var (mail-relay-deadman.sh).
 
-async function pingDeadman(url: string): Promise<void> {
+/** Result of a dead-man GET (no secrets). Used for KV observability. */
+type DeadmanPingResult = { ok: boolean; status?: number; err?: string };
+
+async function pingDeadman(url: string): Promise<DeadmanPingResult> {
+  // Secrets and env can carry trailing newlines/spaces from shell-to-file puts;
+  // startsWith can still pass while fetch fails on a URL with \n (fc#1272).
+  const clean = url.trim();
+  if (!clean.startsWith("https://hc-ping.com/")) {
+    return { ok: false, err: "url-not-hc-ping" };
+  }
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 10_000);
   try {
-    await fetch(url, {
+    const res = await fetch(clean, {
       method: "GET",
       signal: ctrl.signal,
       headers: { "user-agent": "skyphusion-monitor/deadman (+delivery dead-man #278)" },
     });
-  } catch {
-    // swallow: a failed ping just means HC.io pages if it persists -- safe-fail, no throw.
+    // HC returns 200 OK on success; anything else is a failed reset.
+    return { ok: res.ok, status: res.status };
+  } catch (e) {
+    // swallow throw: a failed ping just means HC.io pages if it persists -- safe-fail.
+    return { ok: false, err: e instanceof Error ? e.name : "fetch-failed" };
   } finally {
     clearTimeout(t);
   }
@@ -344,17 +356,36 @@ export default {
     // this (obscure) address cannot reset the timer and mask a real delivery outage.
     // Normalize From: CF may pass envelope MAIL FROM bare, lower/upper, or "Name <addr>".
     // Measured silent-fail (fleet-chezmoi#1272): msmtp+postfix 250 every 5 min to CF MX and
-    // Email Routing still pointed here, but HC last_ping stuck at 2026-08-01 -- strict !==
-    // on message.from was the most likely silent refuse.
+    // Email Routing still pointed here, but HC last_ping stuck -- first From-gate (#68),
+    // then HC_DEADMAN_PING_URL trailing-newline / failed fetch with no observability.
     const wantFrom = normalizeEmailAddr(tunables(env).deadmanFrom);
     const envelopeFrom = normalizeEmailAddr(message.from);
     const headerFrom = normalizeEmailAddr(message.headers.get("from"));
     const fromOk = !!wantFrom && (envelopeFrom === wantFrom || headerFrom === wantFrom);
-    if (!fromOk) return;
-    const url = env.HC_DEADMAN_PING_URL;
+    if (!fromOk) {
+      // Loud enough for wrangler tail; no PII beyond what the routing already carried.
+      console.log("deadman email: refuse from gate", { envelopeFrom, headerFrom, wantFrom });
+      return;
+    }
+    const url = (env.HC_DEADMAN_PING_URL ?? "").trim();
     // No-op until wired (secret unset); only ever GET the HC.io ping host (SSRF guard).
-    if (!url || !url.startsWith("https://hc-ping.com/")) return;
-    // Observability: last successful accept (no secrets).
+    if (!url || !url.startsWith("https://hc-ping.com/")) {
+      console.log("deadman email: refuse bad or unset HC_DEADMAN_PING_URL", {
+        set: !!env.HC_DEADMAN_PING_URL,
+        len: (env.HC_DEADMAN_PING_URL ?? "").length,
+      });
+      return;
+    }
+    // Await the ping in the handler so CF does not drop waitUntil work on email() exit
+    // (observed: deadman-email-last written while HC last_ping stayed stale).
+    const ping = await pingDeadman(url);
+    console.log("deadman email: accept", {
+      to: normalizeEmailAddr(message.to),
+      pingOk: ping.ok,
+      pingStatus: ping.status ?? null,
+      pingErr: ping.err ?? null,
+    });
+    // Observability: last accept + ping result (no secrets, no full URL).
     ctx.waitUntil(
       env.MONITOR_STATE.put(
         "deadman-email-last",
@@ -362,11 +393,13 @@ export default {
           ts: Date.now(),
           from: envelopeFrom || headerFrom,
           to: normalizeEmailAddr(message.to),
+          pingOk: ping.ok,
+          pingStatus: ping.status ?? null,
+          pingErr: ping.err ?? null,
         }),
         { expirationTtl: 86_400 * 7 },
       ),
     );
-    ctx.waitUntil(pingDeadman(url));
   },
   async fetch(req: Request, env: Env): Promise<Response> {
     const t = tunables(env);
