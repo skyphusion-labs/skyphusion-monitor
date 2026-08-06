@@ -435,20 +435,18 @@ export default {
     console.log("deadman email: accept, pending scheduled HC ping", {
       to: normalizeEmailAddr(message.to),
     });
-    ctx.waitUntil(
-      (async () => {
-        await env.MONITOR_STATE.put("deadman-email-pending", "1", { expirationTtl: 7_200 });
-        await env.MONITOR_STATE.put(
-          "deadman-email-last",
-          JSON.stringify({
-            ts: Date.now(),
-            from: envelopeFrom || headerFrom,
-            to: normalizeEmailAddr(message.to),
-            pending: true,
-          }),
-          { expirationTtl: 86_400 * 7 },
-        );
-      })(),
+    // Await KV writes (do not waitUntil): scheduled() must not race a late put that
+    // rewrites last back to pending:true after a successful flush.
+    await env.MONITOR_STATE.put("deadman-email-pending", "1", { expirationTtl: 7_200 });
+    await env.MONITOR_STATE.put(
+      "deadman-email-last",
+      JSON.stringify({
+        ts: Date.now(),
+        from: envelopeFrom || headerFrom,
+        to: normalizeEmailAddr(message.to),
+        pending: true,
+      }),
+      { expirationTtl: 86_400 * 7 },
     );
   },
   async fetch(req: Request, env: Env): Promise<Response> {
