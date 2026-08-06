@@ -131,6 +131,15 @@ async function pingDeadman(url: string): Promise<void> {
   }
 }
 
+/** Bare addr lowercased; strips `Name <addr>` wrappers. Empty in -> empty out. */
+export function normalizeEmailAddr(s: string | null | undefined): string {
+  if (!s) return "";
+  let t = s.trim().toLowerCase();
+  const m = t.match(/<([^>]+)>/);
+  if (m) t = m[1].trim();
+  return t;
+}
+
 // --- Cloudflare API helper ---------------------------------------------------------------------
 // Shared by the cert-expiry probe and the workers.dev coverage sweep. Each caller passes its OWN
 // per-function token; there is deliberately no ambient/default credential here.
@@ -333,10 +342,30 @@ export default {
   async email(message: ForwardableEmailMessage, env: Env, ctx: ExecutionContext): Promise<void> {
     // Only the fleet pusher keeps the dead-man alive: defense-in-depth so a stray sender to
     // this (obscure) address cannot reset the timer and mask a real delivery outage.
-    if (message.from !== tunables(env).deadmanFrom) return;
+    // Normalize From: CF may pass envelope MAIL FROM bare, lower/upper, or "Name <addr>".
+    // Measured silent-fail (fleet-chezmoi#1272): msmtp+postfix 250 every 5 min to CF MX and
+    // Email Routing still pointed here, but HC last_ping stuck at 2026-08-01 -- strict !==
+    // on message.from was the most likely silent refuse.
+    const wantFrom = normalizeEmailAddr(tunables(env).deadmanFrom);
+    const envelopeFrom = normalizeEmailAddr(message.from);
+    const headerFrom = normalizeEmailAddr(message.headers.get("from"));
+    const fromOk = !!wantFrom && (envelopeFrom === wantFrom || headerFrom === wantFrom);
+    if (!fromOk) return;
     const url = env.HC_DEADMAN_PING_URL;
     // No-op until wired (secret unset); only ever GET the HC.io ping host (SSRF guard).
     if (!url || !url.startsWith("https://hc-ping.com/")) return;
+    // Observability: last successful accept (no secrets).
+    ctx.waitUntil(
+      env.MONITOR_STATE.put(
+        "deadman-email-last",
+        JSON.stringify({
+          ts: Date.now(),
+          from: envelopeFrom || headerFrom,
+          to: normalizeEmailAddr(message.to),
+        }),
+        { expirationTtl: 86_400 * 7 },
+      ),
+    );
     ctx.waitUntil(pingDeadman(url));
   },
   async fetch(req: Request, env: Env): Promise<Response> {
