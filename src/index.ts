@@ -121,26 +121,73 @@ type DeadmanPingResult = { ok: boolean; status?: number; err?: string };
 async function pingDeadman(url: string): Promise<DeadmanPingResult> {
   // Secrets and env can carry trailing newlines/spaces from shell-to-file puts;
   // startsWith can still pass while fetch fails on a URL with \n (fc#1272).
-  const clean = url.trim();
+  const clean = url.trim().replace(/\/+$/, ""); // trailing slash -> HC 400
   if (!clean.startsWith("https://hc-ping.com/")) {
     return { ok: false, err: "url-not-hc-ping" };
   }
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 10_000);
   try {
-    const res = await fetch(clean, {
-      method: "GET",
-      signal: ctrl.signal,
-      headers: { "user-agent": "skyphusion-monitor/deadman (+delivery dead-man #278)" },
-    });
+    // Plain GET. (A custom User-Agent was removed after Worker-side 403s; bare fetch
+    // is what we need to keep working for both email and cron dead-men.)
+    const res = await fetch(clean, { method: "GET", signal: ctrl.signal, redirect: "manual" });
     // HC returns 200 OK on success; anything else is a failed reset.
-    return { ok: res.ok, status: res.status };
+    if (res.ok) return { ok: true, status: res.status };
+    // Capture a short body snippet (no secrets expected) so 403/400 is diagnosable.
+    let snippet = "";
+    try {
+      snippet = (await res.text()).slice(0, 80).replace(/\s+/g, " ");
+    } catch {
+      /* ignore */
+    }
+    return { ok: false, status: res.status, err: snippet || `http-${res.status}` };
   } catch (e) {
     // swallow throw: a failed ping just means HC.io pages if it persists -- safe-fail.
     return { ok: false, err: e instanceof Error ? e.name : "fetch-failed" };
   } finally {
     clearTimeout(t);
   }
+}
+
+/** sha256 hex prefix of a string -- for secret shape compare without revealing values. */
+async function sha12(s: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 12);
+}
+
+/** scheduled()-side flush of email-path dead-man (fc#1272). Safe to call from fetch too. */
+async function flushDeadmanEmailPending(env: Env): Promise<void> {
+  const pending = await env.MONITOR_STATE.get("deadman-email-pending");
+  if (!pending) return;
+  const url = (env.HC_DEADMAN_PING_URL ?? "").trim().replace(/\/+$/, "");
+  if (!url.startsWith("https://hc-ping.com/")) return;
+  const ping = await pingDeadman(url);
+  if (!ping.ok) {
+    console.log("deadman scheduled flush: HC ping failed", ping);
+    return; // leave pending so the next cron retries
+  }
+  await env.MONITOR_STATE.delete("deadman-email-pending");
+  const prev = await env.MONITOR_STATE.get("deadman-email-last");
+  let base: Record<string, unknown> = { ts: Date.now() };
+  if (prev) {
+    try {
+      base = { ...JSON.parse(prev), ...base };
+    } catch {
+      /* ignore */
+    }
+  }
+  await env.MONITOR_STATE.put(
+    "deadman-email-last",
+    JSON.stringify({
+      ...base,
+      pending: false,
+      pingOk: true,
+      pingStatus: ping.status ?? 200,
+      pingVia: "scheduled",
+      pingTs: Date.now(),
+    }),
+    { expirationTtl: 86_400 * 7 },
+  );
 }
 
 /** Bare addr lowercased; strips `Name <addr>` wrappers. Empty in -> empty out. */
@@ -350,6 +397,8 @@ export default {
     // pages, which is exactly right (the monitor broke).
     const cronPing = env.HC_CRON_PING_URL;
     if (cronPing && cronPing.startsWith('https://hc-ping.com/')) ctx.waitUntil(pingDeadman(cronPing));
+    // fc#1272: delivery dead-man HC ping runs HERE, not in email(). See email() comment.
+    ctx.waitUntil(flushDeadmanEmailPending(env));
   },
   async email(message: ForwardableEmailMessage, env: Env, ctx: ExecutionContext): Promise<void> {
     // Only the fleet pusher keeps the dead-man alive: defense-in-depth so a stray sender to
@@ -376,29 +425,30 @@ export default {
       });
       return;
     }
-    // Await the ping in the handler so CF does not drop waitUntil work on email() exit
-    // (observed: deadman-email-last written while HC last_ping stayed stale).
-    const ping = await pingDeadman(url);
-    console.log("deadman email: accept", {
+    // CRITICAL (fc#1272): do NOT call hc-ping.com from email() (or any nested fetch
+    // spawned by email(), including service bindings). Measured 2026-08-06:
+    //   - email() -> hc-ping.com: 403 "Blocked, see .../ru-ip-block/"
+    //   - email() -> public monitor URL: 522
+    //   - fetch()/scheduled() -> same secret URL: 200
+    // Email-event colos egress via IPs Healthchecks classifies as blocked. Mark
+    // pending; scheduled() (every 5 min) performs the real GET. Max lag ~= cron.
+    console.log("deadman email: accept, pending scheduled HC ping", {
       to: normalizeEmailAddr(message.to),
-      pingOk: ping.ok,
-      pingStatus: ping.status ?? null,
-      pingErr: ping.err ?? null,
     });
-    // Observability: last accept + ping result (no secrets, no full URL).
     ctx.waitUntil(
-      env.MONITOR_STATE.put(
-        "deadman-email-last",
-        JSON.stringify({
-          ts: Date.now(),
-          from: envelopeFrom || headerFrom,
-          to: normalizeEmailAddr(message.to),
-          pingOk: ping.ok,
-          pingStatus: ping.status ?? null,
-          pingErr: ping.err ?? null,
-        }),
-        { expirationTtl: 86_400 * 7 },
-      ),
+      (async () => {
+        await env.MONITOR_STATE.put("deadman-email-pending", "1", { expirationTtl: 7_200 });
+        await env.MONITOR_STATE.put(
+          "deadman-email-last",
+          JSON.stringify({
+            ts: Date.now(),
+            from: envelopeFrom || headerFrom,
+            to: normalizeEmailAddr(message.to),
+            pending: true,
+          }),
+          { expirationTtl: 86_400 * 7 },
+        );
+      })(),
     );
   },
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -433,6 +483,19 @@ export default {
           ageSec: Math.round((Date.now() - c.ts) / 1000) }; })() : null;
       return Response.json({ ...h, ok, lastRunTs: last.ts, ageSec: Math.round(ageMs / 1000), failures: last.failures, posture: last.posture ?? 0, stale, sick, configError: !!last.configError, cert, coverage },
         { status: ok ? 200 : 503, headers: { "cache-control": "no-store" } });
+    }
+    // fc#1272: HC ping from fetch context (email() cannot hit hc-ping.com -- RU-IP block
+    // on email-event egress). Gated by x-deadman-relay = sha12(HC_DEADMAN_PING_URL); knowing
+    // the header without the ping URL is useless, and knowing the URL already allows pings.
+    if (url.pathname === "/internal/deadman-hc-ping" && req.method === "POST") {
+      const raw = (env.HC_DEADMAN_PING_URL ?? "").trim().replace(/\/+$/, "");
+      if (!raw) return Response.json({ ok: false, err: "unset" }, { status: 503 });
+      const want = await sha12(raw);
+      if (req.headers.get("x-deadman-relay") !== want) {
+        return new Response("forbidden", { status: 403 });
+      }
+      const ping = await pingDeadman(raw);
+      return Response.json(ping, { headers: { "cache-control": "no-store" } });
     }
     if (url.pathname === "/run") {
       if (!env.RUN_KEY || url.searchParams.get("key") !== env.RUN_KEY) return new Response("forbidden", { status: 403 });
