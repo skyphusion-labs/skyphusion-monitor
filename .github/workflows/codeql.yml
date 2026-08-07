@@ -15,6 +15,22 @@
 # step-injection above stays as belt-and-suspenders for the advanced jobs.
 #
 # Public repo -> GitHub-hosted ubuntu-latest (fork-safe), never the fleet pool.
+#
+# THIS WORKFLOW IS THE CODE-SCANNING ANALYSIS SOURCE FOR THIS REPOSITORY, and that
+# makes it load-bearing for merges as well as for security. The org
+# `aviation-grade-main-org` ruleset requires a status check named exactly `CodeQL`.
+# That context is NOT produced by any job here: it is the code-scanning
+# merge-protection check, emitted by the `github-advanced-security` app
+# (integration_id 57789), and it reports only when a code-scanning analysis exists
+# for the head being evaluated. The jobs below are named `Analyze (<language>)` and
+# `Code Quality (<language>)` and are emitted by GitHub Actions (integration_id
+# 15368), so adding or renaming a job here can never satisfy that context directly.
+# Producing analyses is what satisfies it.
+#
+# Consequence, stated so it is not rediscovered: if this workflow is disabled, or its
+# language matrix stops covering the repository, code scanning has no source, no
+# analysis is produced, and the required `CodeQL` context has nothing to report.
+# Refs skyphusion-labs/fleet-chezmoi#1612.
 
 name: CodeQL
 
