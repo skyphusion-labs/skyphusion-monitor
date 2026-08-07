@@ -121,7 +121,8 @@ type DeadmanPingResult = { ok: boolean; status?: number; err?: string };
 async function pingDeadman(url: string): Promise<DeadmanPingResult> {
   // Secrets and env can carry trailing newlines/spaces from shell-to-file puts;
   // startsWith can still pass while fetch fails on a URL with \n (fc#1272).
-  const clean = url.trim().replace(/\/+$/, ""); // trailing slash -> HC 400
+  let clean = url.trim();
+  while (clean.endsWith("/")) clean = clean.slice(0, -1); // trailing slash -> HC 400 (no polyredos regex)
   if (!clean.startsWith("https://hc-ping.com/")) {
     return { ok: false, err: "url-not-hc-ping" };
   }
@@ -136,7 +137,21 @@ async function pingDeadman(url: string): Promise<DeadmanPingResult> {
     // Capture a short body snippet (no secrets expected) so 403/400 is diagnosable.
     let snippet = "";
     try {
-      snippet = (await res.text()).slice(0, 80).replace(/\s+/g, " ");
+      const raw = (await res.text()).slice(0, 80);
+      // Collapse runs of ASCII whitespace without a polyredos-prone \s+ regex (CodeQL).
+      let out = "";
+      let space = false;
+      for (let i = 0; i < raw.length; i++) {
+        const c = raw.charCodeAt(i);
+        const isWs = c === 9 || c === 10 || c === 13 || c === 32;
+        if (isWs) {
+          if (!space && out.length) { out += " "; space = true; }
+        } else {
+          out += raw[i];
+          space = false;
+        }
+      }
+      snippet = out.trim();
     } catch {
       /* ignore */
     }
