@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.2
+
+PATCH: dead-man email delivery (fc#1272: normalize From, await HC ping, flush from scheduled(), await KV writes), polyredos on the ping path, plus Cloudflare toolchain / nanoid / undici on main since v0.6.1.
+
+
 ## v0.6.1
 
 **fix(health): `/health` sick includes uptime failures (#58).**
