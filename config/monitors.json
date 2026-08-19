@@ -74,8 +74,6 @@
       "note": "internal search MCP is bearer-gated; 200 = the internal corpus (fleet-chezmoi, crew-secrets docs) is open" },
     { "name": "AUTH.studio-mcp.vivijure", "url": "https://studio-mcp.vivijure.com/mcp", "ok": [401, 403], "kind": "posture",
       "note": "studio MCP door self-auths; 200 = control-plane tools open" },
-    { "name": "AUTH.studio-mcp.propagandhi", "url": "https://studio-mcp-propagandhi.skyphusion.org/mcp", "ok": [401, 403], "kind": "posture",
-      "note": "propagandhi studio MCP door self-auths; 200 = GPU-dev tools open" },
     { "name": "AUTH.studio-controlplane.api", "url": "https://studio.vivijure.com/api/projects", "ok": [401, 403], "kind": "posture",
       "note": "control-plane API self-auths (public shell at / is intended); 200+data = auth regression" },
     { "name": "AUTH.bus-internal.poll", "url": "https://bus-internal.skyphusion.org/api/poll", "ok": [401], "kind": "posture",

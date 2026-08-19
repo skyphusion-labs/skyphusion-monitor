@@ -31,8 +31,10 @@ Access apps, DNS; 2026-07-18). Two kinds:
     `F2.play-public` expects **200** (`AUTH_MODE=public`, first-party auth; Access retired on
     play).
   - **AUTH self-auth tripwires:** in-worker auth must keep answering **401/403** anonymously
-    (the postern custom domain, the search-internal and studio MCP doors, the studio
-    control-plane API, crew-bus). These are all CUSTOM-domain hostnames, which this vantage
+    (the postern custom domain, the search-internal MCP door, the hosted studio MCP
+    door at studio-mcp.vivijure.com, the studio control-plane API, crew-bus).
+    `studio-mcp-propagandhi.skyphusion.org` is retired (local studio no longer public).
+    These are all CUSTOM-domain hostnames, which this vantage
     CAN read honestly. Self-auth on a `*.workers.dev` hostname (slate-search, slate-logs,
     sidvicious-search) is NOT probeable from here and belongs to the fleet Gatus vantage
     (monitor#44); their workers.dev *state* is asserted by `COVER.workers-dev`.

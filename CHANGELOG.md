@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.6.3
+
+**fix(inventory): drop AUTH.studio-mcp.propagandhi.**
+
+The local studio is no longer a public surface. DNS for
+`studio-mcp-propagandhi.skyphusion.org` is gone; the CF edge still
+answers 530. The posture check expected 401/403, so `/health` stayed
+503 and Gatus paged. Same class as the v0.6.0 common-thread NXDOMAIN
+removals: a retired hostname is alert noise, not a posture finding.
+
 ## v0.6.2
 
 PATCH: dead-man email delivery (fc#1272: normalize From, await HC ping, flush from scheduled(), await KV writes), polyredos on the ping path, plus Cloudflare toolchain / nanoid / undici on main since v0.6.1.
