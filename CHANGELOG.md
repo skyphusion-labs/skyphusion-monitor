@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.6.4
+
+**fix(inventory): record `mt5-risk-agent` on the workers.dev allowance (#87).**
+
+COVER.workers-dev went red after the 2026-09-10 deploy of `mt5-risk-agent`
+(`enabled: 4` vs `allowed: 3`). That hostname is the consumed door for
+`mt5-risk-bot` (`workers_dev: true`, anon `/ask` 401). The check was right;
+the inventory was stale. Do not disable the hostname.
+
 ## v0.6.3
 
 **fix(inventory): drop AUTH.studio-mcp.propagandhi.**

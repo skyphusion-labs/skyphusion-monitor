@@ -133,6 +133,17 @@ describe("validateWorkersDevPolicy -- an unusable policy must fail closed", () =
     expect(policy.allowed.length).toBeGreaterThan(0);
   });
 
+  it("records the consumed workers.dev doors, including mt5-risk-agent (#87)", () => {
+    const { policy, errors } = loadWorkersDevPolicy();
+    expect(errors).toEqual([]);
+    expect(policy.allowed.map((a) => a.script)).toEqual(expect.arrayContaining([
+      "slate-logs",
+      "slate-search",
+      "sidvicious-search",
+      "mt5-risk-agent",
+    ]));
+  });
+
   it("requires a reason AND a coverage pointer on every allowance", () => {
     expect(validateWorkersDevPolicy({ allowed: [{ script: "x", coverage: "c" }] })).toEqual([
       "workersDev.allowed[0] (x): missing reason",
