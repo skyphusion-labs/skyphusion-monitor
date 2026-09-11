@@ -17,6 +17,11 @@
         "script": "sidvicious-search",
         "reason": "UNDECLARED-BY-CONFIG, recorded not blessed: SidVicious_exe/search-worker/wrangler.toml pins workers_dev=true entirely and absent means TRUE, so this exposure is the accidental default rather than a decision. Gated only by the SEARCH_SECRET header (401 to anon from outside), and workers.dev is its whole public surface (no routes). Needs an explicit true-or-false decision in that repo",
         "coverage": "fleet Gatus vantage, monitor#44 -- this Worker cannot probe the 401 (CF 1042); tracked in fc#1180 F2"
+      },
+      {
+        "script": "mt5-risk-agent",
+        "reason": "DELIBERATE consumed door: mt5-risk-bot pins workers_dev true in agent/wrangler.jsonc; ADVICE_URL is https://mt5-risk-agent.skyphusion.workers.dev/ask. Self-auths (401 unauthorized to anon GET/POST /ask). No custom-domain routes, so workers.dev is the whole public surface. Disabling it would break the bot (fc#1180 F1 unknown-dependants class)",
+        "coverage": "this Worker cannot probe the 401 (CF 1042); app-layer ADVICE_TOKEN only, no platform gate. No fleet Gatus tile yet"
       }
     ]
   },
