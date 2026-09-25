@@ -5,13 +5,23 @@ Guidance for Claude Code (and the crew) working in this repo.
 ## What this is
 
 An external **security-posture + uptime** monitor: a standalone Cloudflare Worker (cron, every
-5 minutes) that probes the public skyphusion surfaces from CF's global edge -- a true
-*outside-the-fleet* vantage and a **separate failure domain** from the Hetzner fleet and from
-internal Gatus (inside view). It runs at `monitor.skyphusion.org` and was chosen over a US
-Hetzner box (the retired nofx idea): $0, no box, no cross-zone networking.
+5 minutes) that probes the public skyphusion surfaces from CF's global edge. It runs at
+`monitor.skyphusion.org`: $0, no dedicated box, no cross-zone networking. It was designed as a
+**separate failure domain** from the self-hosted Hetzner fleet and from internal Gatus (inside
+view); both are gone as of 2026-09-24 (fleet decommissioned entirely, self-hosted Gatus with
+it -- `status.skyphusion.org` still resolves at Cloudflare but the origin behind it errors 530,
+confirmed live 2026-09-25). This repo's own `config/monitors.json` and `README.md` have not
+caught up (last commit 2026-09-10): they still probe `status.skyphusion.org` and treat a "fleet
+Gatus vantage" as a live counterpart. Separately, `monitor.skyphusion.org` itself does not
+currently resolve (NXDOMAIN, checked 2026-09-25) despite `wrangler.toml` defining that route --
+this repo's own deploy state needs re-verifying, not assumed from this doc.
 
-> Note: this is NOT Gatus. Internal Gatus (`status.skyphusion.org`) is the inside-fleet view and is
-> Access-gated. This Worker is the complementary outside view; both alert via ntfy.
+> Note: this is NOT Gatus and was never meant to replace it, and it is not confirmed to be
+> covering Gatus's old ground now either. Whatever plays the inside-fleet status role today, if
+> anything, is unverified here; do not assume this Worker fills that gap. (The old claim that
+> internal Gatus was "Access-gated" was also wrong independent of the fleet teardown:
+> `config/monitors.json` documents `status.skyphusion.org` as intentionally public, gating only
+> the push API.)
 
 ## Posture notes agents get wrong
 
@@ -25,8 +35,10 @@ Hetzner box (the retired nofx idea): $0, no box, no cross-zone networking.
 ## Documentation map
 
 - `README.md` -- what it checks (uptime + posture), the alerting model, deploy, and follow-ups.
-- Internal Gatus / fleet status posture is owned with fleet monitors (watt/boon); this repo is the
-  outside CF edge vantage only.
+- Internal Gatus and the off-fleet dead-man monitor pair that used to own inside-fleet status
+  posture are both gone (2026-09-24 teardown); this repo is CF-edge-only and was never the
+  inside view. The resulting doc/code mismatch in `README.md` / `config/monitors.json` is not
+  yet resolved.
 
 ## Commands
 
