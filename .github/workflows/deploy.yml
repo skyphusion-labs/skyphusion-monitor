@@ -21,8 +21,9 @@ name: deploy
 #   CLOUDFLARE_ACCOUNT_ID  -- the Cloudflare account id (wrangler.toml reads it
 #                             from env; never hardcoded).
 #
-# The worker runtime secret NTFY_TOKEN is set once via `wrangler secret put` and
-# persists across deploys -- it is NOT set here.
+# Runtime secrets are set once via `wrangler secret put` and persist across
+# deploys; they are NOT set here. The full set is documented in wrangler.toml.
+# MONITOR_TOPIC is among them (a secret, not a var: this repo is public).
 
 on:
   push:
@@ -61,7 +62,7 @@ jobs:
         with:
           node-version: '22'
       # fc#864: tag vX.Y.Z must match package.json version X.Y.Z so /health cannot lie.
-      # Route the tag through env (not script interpolation) — prism publish-npm pattern.
+      # Route the tag through env (not script interpolation), the prism publish-npm pattern.
       - name: Verify tag matches package.json version
         if: startsWith(github.ref, 'refs/tags/v')
         env:

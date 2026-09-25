@@ -1,9 +1,20 @@
 // Hand-authored Env (we do not generate worker types). Mirror every wrangler binding here.
 export interface Env {
-  // ntfy alerting
-  NTFY_URL: string;        // var, e.g. https://ntfy.skyphusion.org
-  MONITOR_TOPIC: string;   // var, the ntfy topic to publish alerts to
-  NTFY_TOKEN: string;      // secret: least-privilege ntfy publish token
+  // ntfy alerting. REPOINTED to public ntfy.sh 2026-09-25: the self-hosted
+  // ntfy.skyphusion.org died with the Hetzner fleet, and this path must be
+  // cloud -> cloud -> phone so it still works when we host nothing at all. An
+  // alert channel that depends on our own infrastructure is not an alert
+  // channel; it is a second thing to lose in the same outage.
+  NTFY_URL: string;        // var, https://ntfy.sh
+  // A SECRET, not a var, because this repo is PUBLIC. An unauthenticated ntfy.sh
+  // topic has no access control other than its NAME, so a topic in a tracked
+  // file lets anyone page the phone or, worse, forge a reassuring message.
+  // Set via `wrangler secret put MONITOR_TOPIC`.
+  MONITOR_TOPIC: string;   // secret
+  // OPTIONAL. Unset is the NORMAL state on ntfy.sh, and alerting must work
+  // without it; see notifyTarget() in src/index.ts for why requiring a token
+  // silently muted every alert.
+  NTFY_TOKEN?: string;     // secret, optional (authenticated ntfy servers only)
   // gate for the manual /run fetch endpoint (empty = disabled)
   RUN_KEY: string;         // var
   // Last-run state for the /health dead-man's-switch.

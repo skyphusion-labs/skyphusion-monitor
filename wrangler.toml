@@ -5,7 +5,16 @@
 # retired HEL1 nofx monitor idea -- $0, no box, no cross-zone networking.
 #
 # account_id is read from CLOUDFLARE_ACCOUNT_ID (never hardcoded).
-# Secret: NTFY_TOKEN (least-privilege ntfy publish token) -> `wrangler secret put NTFY_TOKEN`.
+#
+# RUNTIME SECRETS -- all six, because deleting a Worker script deletes its secrets
+# and a restore that sets only the obvious one comes up mute. Set each with
+# `wrangler secret put <NAME>` BEFORE the first tagged deploy: the ordering matters,
+# since a Worker whose cron is live but whose alert channel is unset is worse than
+# no Worker at all (it looks healthy and cannot page).
+# Secret: MONITOR_TOPIC -- the ntfy.sh topic. A SECRET, not a var: this repo is
+#   PUBLIC and an unauthenticated ntfy.sh topic is protected only by its NAME.
+# Secret: NTFY_TOKEN (OPTIONAL) -- publish token for an AUTHENTICATED ntfy server.
+#   Unset is normal on ntfy.sh; alerting works without it (see notifyTarget()).
 # Secret: HC_DEADMAN_PING_URL -- the HC.io delivery dead-man check PING url (#278) ->
 #   `wrangler secret put HC_DEADMAN_PING_URL`. The email() handler GETs it on receipt at the
 #   dead-man Email Routing address. Per-function: the ping url ONLY, never the HC.io mgmt key.
@@ -52,8 +61,10 @@ enabled = true
 crons = ["*/5 * * * *"]
 
 [vars]
-NTFY_URL = "https://ntfy.skyphusion.org"
-MONITOR_TOPIC = "skyphusion-uptime"
+# Public ntfy.sh, deliberately: the alert path must survive the loss of everything
+# we host (it is the channel needed exactly when our own infrastructure is gone).
+NTFY_URL = "https://ntfy.sh"
+# MONITOR_TOPIC is a SECRET, not a var -- see the header. Never put the topic here.
 # RUN_KEY gates the manual /run fetch endpoint (set to a non-empty secret-ish value to enable).
 RUN_KEY = ""
 # monitor#42 tunables -- every knob is a var (src/config.ts supplies the same

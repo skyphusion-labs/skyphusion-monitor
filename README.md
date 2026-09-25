@@ -1,20 +1,27 @@
 # skyphusion-monitor
 
 External **security-posture + uptime** monitor: a standalone Cloudflare Worker (cron, every 5 min)
-that probes the public skyphusion surfaces from CFs global edge -- a true *outside-the-fleet*
-vantage and a **separate failure domain** from the Hetzner fleet and from internal Gatus (which
-sees the inside view). Chosen over a US Hetzner box (the retired nofx idea): $0, no box to manage,
-no cross-zone networking, better/global vantage.
+that probes the public skyphusion surfaces from Cloudflare's global edge. $0, no box to manage,
+no cross-zone networking, global vantage.
+
+> **Post-fleet (2026-09-25).** The Hetzner fleet was cut on 2026-09-24, and with it the internal
+> Gatus board this Worker used to complement. That makes the separate-failure-domain argument
+> STRONGER, not weaker: this is now the ONLY uptime and posture vantage on the estate, and its
+> alert path deliberately runs entirely on services we do not host (Cloudflare cron -> ntfy.sh,
+> plus Healthchecks.io watching for the absence of a cron ping). Nothing in the alarm chain
+> depends on infrastructure that could fail in the same event it is meant to report.
 
 ## What it checks
 
-**The probe inventory is `config/monitors.json`** (monitor#42) -- ~40 checks across every
-presently-online public surface (grounded in the live CF API inventory: worker custom domains,
-Access apps, DNS; 2026-07-18). Two kinds:
+**The probe inventory is `config/monitors.json`** (monitor#42) -- **29 checks** (21 uptime,
+8 posture), re-derived from live measurement on 2026-09-25 rather than from recollection: every
+hostname was resolved against two independent resolvers and probed anonymously before being
+listed or dropped. Two kinds:
 
-- **uptime** -- the public surfaces serve what an outsider should get: the skyphusion +
-  vivijure sites and demos, the MUD worlds, common-thread, the status board, auth, ntfy,
-  the court-record site (rockenhaus.net), GitHub Pages, the Umami tracker path.
+- **uptime** -- the public surfaces serve what an outsider should get: the skyphusion and
+  vivijure sites, demos and panel shells, the MUD worlds (hollow, dustfall), the grid-hub
+  federation door, common-thread, the postern demo zone (apex and www redirect to demo),
+  the court-record site (rockenhaus.net), GitHub Pages, and the search-MCP alive tripwire.
 - **security posture** (a change = regression, alerted as SECURITY):
   - **`COVER.workers-dev` (derived coverage, fc#1194):** the ONE check here that is not a
     probe, because it cannot be one. Cloudflare blocks Worker-to-`workers.dev` subrequests
@@ -38,8 +45,11 @@ Access apps, DNS; 2026-07-18). Two kinds:
     CAN read honestly. Self-auth on a `*.workers.dev` hostname (slate-search, slate-logs,
     sidvicious-search) is NOT probeable from here and belongs to the fleet Gatus vantage
     (monitor#44); their workers.dev *state* is asserted by `COVER.workers-dev`.
-  - `status.skyphusion.org` (Gatus) is **intentionally public** (uptime-only); write API
-    stays `GATUS_PUSH_TOKEN` bearer-gated.
+  - **Dead hostnames are removed, not left to rot.** A check against a hostname that no
+    longer resolves is not a dormant check; it is a permanent guaranteed failure, and a board
+    that is always red is how a real outage gets lost. The 2026-09-25 rebuild dropped nine
+    such checks (auth, ntfy, analytics, chat, chat-plus, search, grafana, all NXDOMAIN on two
+    resolvers, plus the status board whose DNS record still resolves to a CF 530).
 
 ### Adding or changing a check (one place)
 
@@ -56,17 +66,43 @@ Operational knobs are wrangler `[vars]` with safe in-code defaults (`src/config.
 `CERT_CHECK_INTERVAL_HOURS`, `WORKERSDEV_SWEEP_INTERVAL_MIN`, `DEADMAN_FROM`, `PROBE_USER_AGENT`.
 
 ## Alerting
-Publishes to **ntfy** (`MONITOR_TOPIC`) ONLY when a check fails its expectation (quiet when healthy).
-Posture regressions go out at `urgent` priority. Auth via the `NTFY_TOKEN` secret (a least-privilege
-ntfy publish token scoped to the alerts topic).
+Publishes to **ntfy.sh** ONLY when a check fails its expectation (quiet when healthy). Posture
+regressions go out at `urgent` priority.
+
+**The target is the public ntfy.sh, on purpose.** The self-hosted `ntfy.skyphusion.org` died with
+the fleet, and an alert channel that runs on our own infrastructure is not a channel; it is a
+second thing to lose in the same outage. Cloud to cloud to phone is what survives total
+infrastructure death, which is precisely when an alert matters most.
+
+Two consequences of that choice, both load-bearing:
+
+- **`MONITOR_TOPIC` is a SECRET, not a var.** This repo is public, and an unauthenticated
+  ntfy.sh topic has no access control other than its name. A topic in a tracked file would let
+  anyone page the phone, or forge a reassuring all-clear.
+- **`NTFY_TOKEN` is OPTIONAL.** ntfy.sh takes an anonymous POST, so there is no token to hold.
+  The guard in `notifyTarget()` (`src/index.ts`) therefore requires only URL + topic. It used to
+  require the token as well, which would have made every alert return early and left the Worker
+  permanently and silently mute while the cron, `/health` and the dead-man all read green.
+  `tests/notify.test.ts` exists to keep that path dead, and it has been watched failing against
+  the old guard.
 
 ## Config / deploy
 - Bindings are mirrored in `src/env.ts` (hand-authored Env).
-- `wrangler secret put NTFY_TOKEN` then `npm run deploy`. `account_id` comes from `CLOUDFLARE_ACCOUNT_ID`.
-- Runtime secrets, each per-function and set once via `wrangler secret put`: `NTFY_TOKEN`,
-  `HC_DEADMAN_PING_URL`, `HC_CRON_PING_URL`, `CF_CERT_READ_TOKEN`, and (fc#1194)
-  `CF_WORKERS_READ_TOKEN` + `CF_ACCOUNT_ID`. **Set the last two BEFORE tagging a release**:
-  the coverage check fails CLOSED without them, which is deliberate but will page.
+- `account_id` comes from `CLOUDFLARE_ACCOUNT_ID` at deploy time; it never reaches the runtime.
+- **Runtime secrets, each per-function, set once via `wrangler secret put`. Deleting a Worker
+  script deletes all of them, so a restore that sets only the obvious one comes up mute.**
+  Set them BEFORE the first tagged deploy; the ordering is not cosmetic, because a Worker whose
+  cron is live but whose alert channel is unset is worse than no Worker at all (it looks healthy
+  and cannot page).
+
+  | secret | required | unset behaviour |
+  |---|---|---|
+  | `MONITOR_TOPIC` | **yes** | no alert is ever published |
+  | `NTFY_TOKEN` | no | anonymous publish (normal on ntfy.sh) |
+  | `HC_CRON_PING_URL` | **yes** | no monitor-liveness dead-man at all |
+  | `CF_WORKERS_READ_TOKEN` + `CF_ACCOUNT_ID` | **yes** | `COVER.workers-dev` fails CLOSED and pages hourly; deliberate, since an absent credential must not read as "nothing exposed" |
+  | `CF_CERT_READ_TOKEN` | no | cert-expiry probe no-ops |
+  | `HC_DEADMAN_PING_URL` | **no, currently DORMANT** | `email()` no-ops. Its sender was a fleet cron (`mail-relay-deadman.sh`) that no longer exists, so setting it would create a check that can only page. Leave unset until a replacement sender exists. |
 - Cron `*/5 * * * *`. Cron primary; also public host `monitor.skyphusion.org`; `/health` + gated `/run?key=` exist if a route is added.
 
 ## TLS cert-expiry probe (monitor#3 part 2)
@@ -118,17 +154,26 @@ account, Pages projects, or a Worker exposed through a route on a zone it does n
 
 ## Follow-ups (v2)
 - ~~TLS cert-expiry checks~~ DONE (monitor#3 part 2, above).
-- ~~Dead-mans-switch~~ DONE twice over: scheduled-run HC.io ping (monitor#3 part 1) + the
-  mail-delivery dead-man (#278).
+- ~~Dead-mans-switch~~ scheduled-run HC.io ping (monitor#3 part 1) is the live one. The
+  mail-delivery dead-man (#278) is **DORMANT**: its sender was a fleet cron that died on
+  2026-09-24, so the code path stays (it no-ops on an unset secret) but the HC check must not
+  be wired until something sends again. Retiring it properly, or re-pointing it at a
+  Cloudflare-side sender, is an open decision.
 - ~~Widen posture checks as more Access-gated surfaces land~~ DONE (monitor#42: full live
   inventory + config-driven checks; new surfaces are a `config/monitors.json` edit).
 - Optional: ntfy title/priority/tag policy as config (still inline in the engine).
-- Self-auth coverage for the three allowed `*.workers.dev` hostnames from the fleet Gatus
-  vantage (monitor#44) -- unprobeable from this Worker by construction.
+- Self-auth coverage for the allowed `*.workers.dev` hostnames. Unprobeable from this Worker by
+  construction (CF 1042), and the fleet Gatus vantage that used to carry it (monitor#44) is
+  gone, so this is currently UNCOVERED rather than covered elsewhere. Do not read monitor#44 as
+  a live compensating control anywhere in this repo.
+- Re-reconcile the `workersDev` allowance list against the account. It was last checked on
+  2026-08-15 and cannot be verified without `CF_WORKERS_READ_TOKEN`.
 
 ## Who this is for
 
-Fleet operators who want an **outside-the-fleet** vantage on public Skyphusion surfaces (uptime + Access-gate regressions), separate from internal Gatus.
+Anyone running a small estate of public surfaces who wants an **independent** vantage on uptime
+and on auth-gate regressions: one cron Worker, a config file of expectations, and an alert path
+that does not share a failure domain with the thing it watches.
 
 ## Links
 

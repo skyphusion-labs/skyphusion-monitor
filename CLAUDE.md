@@ -8,20 +8,30 @@ An external **security-posture + uptime** monitor: a standalone Cloudflare Worke
 5 minutes) that probes the public skyphusion surfaces from CF's global edge. It runs at
 `monitor.skyphusion.org`: $0, no dedicated box, no cross-zone networking. It was designed as a
 **separate failure domain** from the self-hosted Hetzner fleet and from internal Gatus (inside
-view); both are gone as of 2026-09-24 (fleet decommissioned entirely, self-hosted Gatus with
-it -- `status.skyphusion.org` still resolves at Cloudflare but the origin behind it errors 530,
-confirmed live 2026-09-25). This repo's own `config/monitors.json` and `README.md` have not
-caught up (last commit 2026-09-10): they still probe `status.skyphusion.org` and treat a "fleet
-Gatus vantage" as a live counterpart. Separately, `monitor.skyphusion.org` itself does not
-currently resolve (NXDOMAIN, checked 2026-09-25) despite `wrangler.toml` defining that route --
-this repo's own deploy state needs re-verifying, not assumed from this doc.
+view); both are gone as of 2026-09-24 (fleet decommissioned entirely, self-hosted Gatus with it).
+`status.skyphusion.org` still resolved at Cloudflare on 2026-09-25 while the origin behind it
+answered CF 530, which is why it is REMOVED from the inventory as dead rather than left in place
+as a dormant check.
 
-> Note: this is NOT Gatus and was never meant to replace it, and it is not confirmed to be
-> covering Gatus's old ground now either. Whatever plays the inside-fleet status role today, if
-> anything, is unverified here; do not assume this Worker fills that gap. (The old claim that
-> internal Gatus was "Access-gated" was also wrong independent of the fleet teardown:
-> `config/monitors.json` documents `status.skyphusion.org` as intentionally public, gating only
-> the push API.)
+> **Post-fleet (2026-09-25).** The Hetzner fleet is gone, so internal Gatus
+> (`status.skyphusion.org`) is gone with it. This Worker is now the ONLY uptime and posture
+> vantage on the estate. Three consequences that bite when editing this repo:
+> 1. **Nothing consumes `/health` any more.** Gatus was its only poller, so `/health` is a
+>    diagnostic endpoint, not a monitored control. Monitor liveness rests entirely on the
+>    `HC_CRON_PING_URL` dead-man, where Healthchecks.io pages on the ABSENCE of a cron ping.
+> 2. **Any comment claiming the "fleet Gatus vantage" covers something (monitor#44) is void.**
+>    That vantage does not exist. Treat what it used to cover as uncovered, and say so.
+> 3. **This Worker is not deployed.** `monitor.skyphusion.org` was NXDOMAIN on 2026-09-25
+>    despite `wrangler.toml` defining that route, because the deploy credentials went with the
+>    teardown. Read deploy state from a live resolve, never from this doc or from `wrangler.toml`;
+>    a defined route is not a live one, and deploying again is a separate, credentialed decision.
+
+> Note: this is NOT Gatus and was never meant to replace it. It is the CF-edge vantage only, so
+> being the last vantage standing does NOT mean it covers Gatus's old ground: the inside view is
+> simply uncovered now, because there is no fleet to be inside of. Do not assume this Worker fills
+> that gap. (The old claim that internal Gatus was "Access-gated" was also wrong independent of the
+> teardown: `config/monitors.json` documented `status.skyphusion.org` as intentionally public,
+> gating only the push API.)
 
 ## Posture notes agents get wrong
 
@@ -31,14 +41,23 @@ this repo's own deploy state needs re-verifying, not assumed from this doc.
   Treating play as Access-gated is a defect in the inventory, not a prod outage.
 - Probe inventory lives in `config/monitors.json` (config-driven; see README). Do not hardcode a
   surface list in source.
+- **Never add a check for a hostname you have not just resolved and probed.** The inventory is
+  re-derived from measurement, not from memory or from this file; a check on a dead hostname is a
+  permanent failure that masks real outages, and nine of them had to be removed on 2026-09-25.
+- **Alerting is ntfy.sh and `NTFY_TOKEN` is OPTIONAL.** Do not "restore" a token requirement in
+  `notifyTarget()`: on ntfy.sh there is no token, and requiring one mutes every alert while every
+  other indicator stays green. `MONITOR_TOPIC` is a SECRET because this repo is public and the
+  topic name is the only thing protecting the channel.
 
 ## Documentation map
 
 - `README.md` -- what it checks (uptime + posture), the alerting model, deploy, and follow-ups.
 - Internal Gatus and the off-fleet dead-man monitor pair that used to own inside-fleet status
   posture are both gone (2026-09-24 teardown); this repo is CF-edge-only and was never the
-  inside view. The resulting doc/code mismatch in `README.md` / `config/monitors.json` is not
-  yet resolved.
+  inside view. Half of the resulting doc/code mismatch is now closed: `config/monitors.json` was
+  re-derived from live measurement on 2026-09-25 and no longer lists dead fleet surfaces.
+  `README.md` is NOT closed; it still cites the "fleet Gatus vantage" as covering ground (three
+  places), and correcting that prose is a follow-up this branch did not do.
 
 ## Commands
 
