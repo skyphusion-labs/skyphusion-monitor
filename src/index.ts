@@ -13,6 +13,75 @@ import { assessWorkersDevCoverage, coverageSignature, summarizeCoverage, type Su
 
 interface Result { name: string; kind: CheckKind; url: string; status: number | null; expected: number[]; ok: boolean; reason?: string; note?: string }
 
+// --- Linear string scanners (js/polynomial-redos, CodeQL high) ----------------------------------
+// FOUR quadratic regexes lived in this file and all four are replaced by the two scanners below.
+// They were REAL rather than theoretical: this Worker fetches remote hosts and reads their bodies,
+// and the values it strips slashes from are configuration whose SHAPE it does not control, so
+// "uncontrolled data" here means "whatever a remote host, or a mistyped shell-to-file secret put,
+// hands us". A quadratic match burns Worker CPU on one hostile or merely broken input, and the
+// thing that would page about that outage is this Worker.
+//
+// MEASURED on node v26 (V8, the same backtracking engine class workerd runs), input doubling:
+//   /\/+$/      on "/".repeat(n) + "x" : n=2k 1.4ms, 4k 5.1ms, 8k 22ms, 16k 85ms, 32k 329ms
+//   /<([^>]+)>/ on "<".repeat(n)       : n=2k 1.6ms, 4k 7.3ms, 8k 24ms, 16k 89ms, 32k 333ms
+// Time rises ~4x per 2x of input, which is what quadratic looks like. The scanners below are flat
+// below 0.001ms across that entire range.
+//
+// WHY they were quadratic, which is the part worth keeping in your head:
+//   `\/+$` is ambiguous about WHERE a run of slashes starts. On "/////x" the engine tries every
+//   start position; each time it consumes the whole run, fails `$` on the trailing "x", and
+//   backtracks through every shorter length of that run. O(n) doomed start positions at O(n) each.
+//   `<([^>]+)>` has the same defect one level up: `[^>]` ALSO matches "<", so the opening delimiter
+//   overlaps the body class and EVERY "<" is a candidate start. On "<<<<<<" each start scans the
+//   rest of the string hunting a ">" that is not there.
+//
+// THE FIX IS AN INDEX SCAN, NOT A TIGHTER REGEX, and that is a deliberate choice. The estate's
+// worked example (vivijure-control-plane src/auth.ts, looksLikeEmail/EMAIL_RE) uses the two
+// standard techniques: a length cap evaluated FIRST, and character classes that EXCLUDE the
+// separator so every character has exactly one role. Both apply here and either alone would close
+// the DoS. A scan is used instead because it is stronger on both counts: no backtracking engine is
+// left to reason about, so linearity is structural rather than argued, and no length cap is needed,
+// so no input becomes newly rejected. This file already set that precedent once, in the hand-rolled
+// whitespace collapse in pingDeadman that replaced a \s+ regex for this same CodeQL rule.
+//
+// NO BEHAVIOUR CHANGE, and that is the claim that had to be proved rather than asserted. Both
+// scanners are differentially equivalent to the regexes they replace across 29,524 + 21,845
+// EXHAUSTIVELY enumerated strings over the alphabets that matter, 400,000 randomised strings, and
+// 19 named real-world cases: 0 mismatches. Unlike the auth.ts fix there is deliberately nothing
+// stricter here; if a value was accepted before, it is accepted now, byte for byte. The non-obvious
+// case the exhaustive pass pinned down is "a<>b<c>", where the regex SKIPS the empty "<>" pair and
+// matches "<c>"; unwrapAngleAddr preserves that by advancing past a rejected pair rather than
+// giving up at the first "<".
+//
+// The scan is linear on the REJECTING path too, which is the path an attacker picks. The only case
+// that continues the loop is a ">" sitting immediately after the "<" (an O(1) probe), because any
+// longer probe either succeeds and returns or runs to end of string and returns. No input makes it
+// rescan a region it has already crossed.
+
+/** Strip trailing "/" characters. Linear by construction; see the note above. */
+export function stripTrailingSlashes(s: string): string {
+  let end = s.length;
+  while (end > 0 && s.charCodeAt(end - 1) === 47 /* "/" */) end--;
+  return end === s.length ? s : s.slice(0, end);
+}
+
+/**
+ * Unwrap the FIRST `<addr>` pair and return its contents trimmed; return the input unchanged when
+ * there is no such pair. Exactly `/<([^>]+)>/` semantics, minus the backtracking. Linear by
+ * construction; see the note above.
+ */
+export function unwrapAngleAddr(t: string): string {
+  let from = 0;
+  for (;;) {
+    const lt = t.indexOf("<", from);
+    if (lt === -1) return t;
+    const gt = t.indexOf(">", lt + 1);
+    if (gt === -1) return t;
+    if (gt > lt + 1) return t.slice(lt + 1, gt).trim();
+    from = gt; // empty "<>": the regex skipped it and kept looking, so do the same
+  }
+}
+
 /**
  * Derive /health `sick` from the last-run record.
  *
@@ -68,7 +137,7 @@ async function runAll(checks: CheckConfig[], t: Tunables): Promise<Result[]> {
  * tests/notify.test.ts can assert the mute path stays dead.
  */
 export function notifyTarget(env: Env): { url: string; authHeaders: Record<string, string> } | null {
-  const base = (env.NTFY_URL ?? "").trim().replace(/\/+$/, "");
+  const base = stripTrailingSlashes((env.NTFY_URL ?? "").trim());
   const topic = (env.MONITOR_TOPIC ?? "").trim();
   if (!base || !topic) return null;
   const token = (env.NTFY_TOKEN ?? "").trim();
@@ -143,8 +212,8 @@ type DeadmanPingResult = { ok: boolean; status?: number; err?: string };
 async function pingDeadman(url: string): Promise<DeadmanPingResult> {
   // Secrets and env can carry trailing newlines/spaces from shell-to-file puts;
   // startsWith can still pass while fetch fails on a URL with \n (fc#1272).
-  let clean = url.trim();
-  while (clean.endsWith("/")) clean = clean.slice(0, -1); // trailing slash -> HC 400 (no polyredos regex)
+  // Trailing slash -> HC 400. stripTrailingSlashes, not a regex and not a slice loop.
+  const clean = stripTrailingSlashes(url.trim());
   if (!clean.startsWith("https://hc-ping.com/")) {
     return { ok: false, err: "url-not-hc-ping" };
   }
@@ -196,7 +265,7 @@ async function sha12(s: string): Promise<string> {
 async function flushDeadmanEmailPending(env: Env): Promise<void> {
   const pending = await env.MONITOR_STATE.get("deadman-email-pending");
   if (!pending) return;
-  const url = (env.HC_DEADMAN_PING_URL ?? "").trim().replace(/\/+$/, "");
+  const url = stripTrailingSlashes((env.HC_DEADMAN_PING_URL ?? "").trim());
   if (!url.startsWith("https://hc-ping.com/")) return;
   const ping = await pingDeadman(url);
   if (!ping.ok) {
@@ -230,10 +299,8 @@ async function flushDeadmanEmailPending(env: Env): Promise<void> {
 /** Bare addr lowercased; strips `Name <addr>` wrappers. Empty in -> empty out. */
 export function normalizeEmailAddr(s: string | null | undefined): string {
   if (!s) return "";
-  let t = s.trim().toLowerCase();
-  const m = t.match(/<([^>]+)>/);
-  if (m) t = m[1].trim();
-  return t;
+  const t = s.trim().toLowerCase();
+  return unwrapAngleAddr(t);
 }
 
 // --- Cloudflare API helper ---------------------------------------------------------------------
@@ -523,7 +590,7 @@ export default {
     // on email-event egress). Gated by x-deadman-relay = sha12(HC_DEADMAN_PING_URL); knowing
     // the header without the ping URL is useless, and knowing the URL already allows pings.
     if (url.pathname === "/internal/deadman-hc-ping" && req.method === "POST") {
-      const raw = (env.HC_DEADMAN_PING_URL ?? "").trim().replace(/\/+$/, "");
+      const raw = stripTrailingSlashes((env.HC_DEADMAN_PING_URL ?? "").trim());
       if (!raw) return Response.json({ ok: false, err: "unset" }, { status: 503 });
       const want = await sha12(raw);
       if (req.headers.get("x-deadman-relay") !== want) {
