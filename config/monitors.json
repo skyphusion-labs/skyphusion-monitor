@@ -75,8 +75,6 @@
     { "name": "AUTH.studio-mcp.vivijure", "url": "https://studio-mcp.vivijure.com/mcp", "ok": [401, 403], "kind": "posture",
       "note": "studio MCP door self-auths; 200 = control-plane tools open" },
     { "name": "AUTH.studio-controlplane.api", "url": "https://studio.vivijure.com/api/projects", "ok": [401, 403], "kind": "posture",
-      "note": "control-plane API self-auths (public shell at / is intended); 200+data = auth regression" },
-    { "name": "AUTH.bus-internal.poll", "url": "https://bus-internal.skyphusion.org/api/poll", "ok": [401], "kind": "posture",
-      "note": "cross-crew bus is bearer-gated; 200 = crew coordination bus open to the internet" }
+      "note": "control-plane API self-auths (public shell at / is intended); 200+data = auth regression" }
   ]
 }
