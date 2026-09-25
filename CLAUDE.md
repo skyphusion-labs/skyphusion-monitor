@@ -6,16 +6,32 @@ Guidance for Claude Code (and the crew) working in this repo.
 
 An external **security-posture + uptime** monitor: a standalone Cloudflare Worker (cron, every
 5 minutes) that probes the public skyphusion surfaces from CF's global edge. It runs at
-`monitor.skyphusion.org`. $0, no box, no cross-zone networking.
+`monitor.skyphusion.org`: $0, no dedicated box, no cross-zone networking. It was designed as a
+**separate failure domain** from the self-hosted Hetzner fleet and from internal Gatus (inside
+view); both are gone as of 2026-09-24 (fleet decommissioned entirely, self-hosted Gatus with it).
+`status.skyphusion.org` still resolved at Cloudflare on 2026-09-25 while the origin behind it
+answered CF 530, which is why it is REMOVED from the inventory as dead rather than left in place
+as a dormant check.
 
 > **Post-fleet (2026-09-25).** The Hetzner fleet is gone, so internal Gatus
 > (`status.skyphusion.org`) is gone with it. This Worker is now the ONLY uptime and posture
-> vantage on the estate. Two consequences that bite when editing this repo:
+> vantage on the estate. Three consequences that bite when editing this repo:
 > 1. **Nothing consumes `/health` any more.** Gatus was its only poller, so `/health` is a
 >    diagnostic endpoint, not a monitored control. Monitor liveness rests entirely on the
 >    `HC_CRON_PING_URL` dead-man, where Healthchecks.io pages on the ABSENCE of a cron ping.
 > 2. **Any comment claiming the "fleet Gatus vantage" covers something (monitor#44) is void.**
 >    That vantage does not exist. Treat what it used to cover as uncovered, and say so.
+> 3. **This Worker is not deployed.** `monitor.skyphusion.org` was NXDOMAIN on 2026-09-25
+>    despite `wrangler.toml` defining that route, because the deploy credentials went with the
+>    teardown. Read deploy state from a live resolve, never from this doc or from `wrangler.toml`;
+>    a defined route is not a live one, and deploying again is a separate, credentialed decision.
+
+> Note: this is NOT Gatus and was never meant to replace it. It is the CF-edge vantage only, so
+> being the last vantage standing does NOT mean it covers Gatus's old ground: the inside view is
+> simply uncovered now, because there is no fleet to be inside of. Do not assume this Worker fills
+> that gap. (The old claim that internal Gatus was "Access-gated" was also wrong independent of the
+> teardown: `config/monitors.json` documented `status.skyphusion.org` as intentionally public,
+> gating only the push API.)
 
 ## Posture notes agents get wrong
 
@@ -36,8 +52,12 @@ An external **security-posture + uptime** monitor: a standalone Cloudflare Worke
 ## Documentation map
 
 - `README.md` -- what it checks (uptime + posture), the alerting model, deploy, and follow-ups.
-- Internal Gatus / fleet status posture is owned with fleet monitors (watt/boon); this repo is the
-  outside CF edge vantage only.
+- Internal Gatus and the off-fleet dead-man monitor pair that used to own inside-fleet status
+  posture are both gone (2026-09-24 teardown); this repo is CF-edge-only and was never the
+  inside view. Half of the resulting doc/code mismatch is now closed: `config/monitors.json` was
+  re-derived from live measurement on 2026-09-25 and no longer lists dead fleet surfaces.
+  `README.md` is NOT closed; it still cites the "fleet Gatus vantage" as covering ground (three
+  places), and correcting that prose is a follow-up this branch did not do.
 
 ## Commands
 
