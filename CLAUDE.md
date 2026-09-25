@@ -5,13 +5,17 @@ Guidance for Claude Code (and the crew) working in this repo.
 ## What this is
 
 An external **security-posture + uptime** monitor: a standalone Cloudflare Worker (cron, every
-5 minutes) that probes the public skyphusion surfaces from CF's global edge -- a true
-*outside-the-fleet* vantage and a **separate failure domain** from the Hetzner fleet and from
-internal Gatus (inside view). It runs at `monitor.skyphusion.org` and was chosen over a US
-Hetzner box (the retired nofx idea): $0, no box, no cross-zone networking.
+5 minutes) that probes the public skyphusion surfaces from CF's global edge. It runs at
+`monitor.skyphusion.org`. $0, no box, no cross-zone networking.
 
-> Note: this is NOT Gatus. Internal Gatus (`status.skyphusion.org`) is the inside-fleet view and is
-> Access-gated. This Worker is the complementary outside view; both alert via ntfy.
+> **Post-fleet (2026-09-25).** The Hetzner fleet is gone, so internal Gatus
+> (`status.skyphusion.org`) is gone with it. This Worker is now the ONLY uptime and posture
+> vantage on the estate. Two consequences that bite when editing this repo:
+> 1. **Nothing consumes `/health` any more.** Gatus was its only poller, so `/health` is a
+>    diagnostic endpoint, not a monitored control. Monitor liveness rests entirely on the
+>    `HC_CRON_PING_URL` dead-man, where Healthchecks.io pages on the ABSENCE of a cron ping.
+> 2. **Any comment claiming the "fleet Gatus vantage" covers something (monitor#44) is void.**
+>    That vantage does not exist. Treat what it used to cover as uncovered, and say so.
 
 ## Posture notes agents get wrong
 
@@ -21,6 +25,13 @@ Hetzner box (the retired nofx idea): $0, no box, no cross-zone networking.
   Treating play as Access-gated is a defect in the inventory, not a prod outage.
 - Probe inventory lives in `config/monitors.json` (config-driven; see README). Do not hardcode a
   surface list in source.
+- **Never add a check for a hostname you have not just resolved and probed.** The inventory is
+  re-derived from measurement, not from memory or from this file; a check on a dead hostname is a
+  permanent failure that masks real outages, and nine of them had to be removed on 2026-09-25.
+- **Alerting is ntfy.sh and `NTFY_TOKEN` is OPTIONAL.** Do not "restore" a token requirement in
+  `notifyTarget()`: on ntfy.sh there is no token, and requiring one mutes every alert while every
+  other indicator stays green. `MONITOR_TOPIC` is a SECRET because this repo is public and the
+  topic name is the only thing protecting the channel.
 
 ## Documentation map
 

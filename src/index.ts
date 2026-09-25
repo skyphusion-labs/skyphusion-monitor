@@ -54,12 +54,34 @@ async function runAll(checks: CheckConfig[], t: Tunables): Promise<Result[]> {
   return Promise.all(checks.map((c) => runCheck(c, t)));
 }
 
+/**
+ * Resolve the ntfy publish target, or null when alerting is unconfigured.
+ *
+ * NTFY_TOKEN IS OPTIONAL, and that is the entire reason this is a named,
+ * exported function. ntfy.sh accepts an anonymous POST to a topic; there is no
+ * token to hold, and the topic NAME is the only credential (which is why
+ * MONITOR_TOPIC is a secret and not a var in a public repo). The previous guard
+ * required a token, so repointing NTFY_URL at ntfy.sh would have made every
+ * single alert return early and left this Worker permanently, silently mute.
+ * A monitor that cannot page is indistinguishable from an estate with nothing
+ * wrong, which is the one failure mode this repo exists to prevent. Exported so
+ * tests/notify.test.ts can assert the mute path stays dead.
+ */
+export function notifyTarget(env: Env): { url: string; authHeaders: Record<string, string> } | null {
+  const base = (env.NTFY_URL ?? "").trim().replace(/\/+$/, "");
+  const topic = (env.MONITOR_TOPIC ?? "").trim();
+  if (!base || !topic) return null;
+  const token = (env.NTFY_TOKEN ?? "").trim();
+  return { url: `${base}/${topic}`, authHeaders: token ? { Authorization: `Bearer ${token}` } : {} };
+}
+
 async function notify(env: Env, title: string, body: string, urgent: boolean, tags: string): Promise<void> {
-  if (!env.NTFY_TOKEN || !env.NTFY_URL || !env.MONITOR_TOPIC) return;
-  await fetch(`${env.NTFY_URL}/${env.MONITOR_TOPIC}`, {
+  const target = notifyTarget(env);
+  if (!target) return;
+  await fetch(target.url, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${env.NTFY_TOKEN}`,
+      ...target.authHeaders,
       Title: title,
       Priority: urgent ? "urgent" : "high",
       Tags: tags,

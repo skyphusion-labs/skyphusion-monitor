@@ -1,27 +1,27 @@
 {
-  "$comment": "skyphusion-monitor probe inventory (monitor#42). Adding/changing a surface is an edit HERE (validated in CI by tests/config.test.ts, shipped by the tagged deploy) -- never a src/ edit. Schema: src/validate.ts CheckConfig. Inventory grounded in the live CF API pull + anonymous probes 2026-07-18: worker custom domains, Access apps, DNS. Deliberately absent: monitor.skyphusion.org (self-probe is circular; internal Gatus polls /health), hooks-* doorbell endpoints (crew-bus delivery accounting owns that signal; transport rethink crew-bus#40), imap./smtp. (TCP, fleet Gatus lane), rockenhaus.org (parked zone, no live surface). VANTAGE LIMIT, MEASURED not inferred (fc#1194, 2026-08-01): this Worker CANNOT probe any *.workers.dev hostname. Cloudflare blocks Worker-to-workers.dev subrequests inside the same account and answers 404 `error code: 1042` for every such name, ENABLED and DISABLED alike -- verified against sidvicious-search/slate-search/slate-logs (all enabled, 401/405/401 from outside) and grid-hub/vivijure-studio (both disabled), with https://skyphusion.org/ as a control returning a real 200 through the same code path. The five workers.dev-targeted probes that used to live here (F1.vivijure-workersdev.cast, F1.vivijure-workersdev.modules, F1.grid-hub-workersdev, F1.prism-workersdev, AUTH.email-inbound.messages) therefore matched their expected 404 forever and could not report the bad state on any Worker. They are REPLACED by the COVER.workers-dev check, which reads authoritative state from the Cloudflare API for EVERY Worker in the account (see workersDev below and src/coverage.ts). Custom-domain probes are unaffected: the control proves a Worker-to-Worker fetch over a custom domain returns the real status. Also removed at fc#1194: the common-thread-web and common-thread-backend uptime checks. common-thread was SHELVED 2026-07-31 and all three custom domains were removed, so both hostnames are NXDOMAIN (verified by getent + curl, independently of the monitor) and both checks had become permanent guaranteed failures -- alert noise that would mask a real outage. Restore them if common-thread comes off the shelf; the Workers, DO state, Hyperdrive and R2 bucket were left intact.",
+  "$comment": "skyphusion-monitor probe inventory (monitor#42). Adding/changing a surface is an edit HERE (validated in CI by tests/config.test.ts, shipped by the tagged deploy) -- never a src/ edit. Schema: src/validate.ts CheckConfig. POST-FLEET REBUILD 2026-09-25: the Hetzner fleet was cut 2026-09-24 and every surface it served is gone, so this inventory was re-derived from live measurement rather than edited by recollection. Each hostname below was resolved against TWO independent resolvers (1.1.1.1 and 8.8.8.8) and probed anonymously from off-CF on 2026-09-25; nothing is listed on memory alone. REMOVED as dead (9 checks, 7 NXDOMAIN hostnames plus one dangling record): authentik (auth.skyphusion.org), ntfy (ntfy.skyphusion.org), analytics-tracker + F2.analytics-access (analytics.skyphusion.org), F2.chat-access (chat.skyphusion.org), F2.chatplus-access (chat-plus.skyphusion.org), F2.search-access (search.skyphusion.org), F2.grafana-access (grafana.skyphusion.org) -- all NXDOMAIN on both resolvers; and status-gatus (status.skyphusion.org), whose DNS record still resolves but whose origin is gone (CF 530). A check against a dead hostname is not a dormant check, it is a guaranteed permanent failure, and a permanently failing board is how a real outage gets lost in the noise. ADDED, each measured live before listing: common-thread (200, real app; it was removed at fc#1194 while NXDOMAIN and the hostname is answering again, so the fc#1194 removal note is now historical), postern-demo/postern-apex/postern-www (the public posternonline.com demo zone, apex and www both 301 to demo), and vivijure-panel (the panel shell root, 200, same public-shell-with-self-authing-API shape as studio-shell). Deliberately absent: monitor.skyphusion.org (self-probe is circular), *.workers.dev (see workersDev below), imap./smtp. (TCP), rockenhaus.org (parked). NOTE on /health: internal Gatus at status.skyphusion.org was the only consumer of this Worker's /health endpoint and it died with the fleet, so /health is no longer a monitored control. Monitor liveness now rests entirely on the HC_CRON_PING_URL dead-man (HC.io pages on absence of a cron ping). VANTAGE LIMIT, MEASURED not inferred (fc#1194, 2026-08-01): this Worker CANNOT probe any *.workers.dev hostname. Cloudflare blocks Worker-to-workers.dev subrequests inside the same account and answers 404 `error code: 1042` for every such name, ENABLED and DISABLED alike, with https://skyphusion.org/ as a control returning a real 200 through the same code path. Those probes are REPLACED by the COVER.workers-dev check, which reads authoritative state from the Cloudflare API for EVERY Worker in the account (see workersDev below and src/coverage.ts).",
   "workersDev": {
-    "$comment": "ALLOWANCE policy for the COVER.workers-dev check (fc#1194 / fc#1180 F2). The Worker LIST is derived from the Cloudflare API at runtime, never from this file -- a Worker deployed tomorrow is assessed the moment it exists, and a Worker nobody remembers is assessed too. This list is only the set of Workers permitted to answer on *.workers.dev. Rules enforced by src/coverage.ts: an ENABLED Worker with no entry FAILS; an entry whose Worker is no longer enabled FAILS (a stale allowance must not rot into a permanent silent pass); an entry naming a Worker that does not exist FAILS; a zero-length enumeration FAILS (an empty success is indistinguishable from a permission gap, fc#1180 F5); a non-boolean previews_enabled FAILS as UNKNOWN. An entry here RECORDS an exposure, it does not bless it: workers.dev is not covered by Cloudflare Access, which binds a hostname, so each of these depends on the Worker's own code staying correct forever with no platform gate behind it. Disabling any of these live hostnames is Conrad-gated (fc#1180 F1 precedent: unknown dependants).",
+    "$comment": "ALLOWANCE policy for the COVER.workers-dev check (fc#1194 / fc#1180 F2). The Worker LIST is derived from the Cloudflare API at runtime, never from this file -- a Worker deployed tomorrow is assessed the moment it exists, and a Worker nobody remembers is assessed too. This list is only the set of Workers permitted to answer on *.workers.dev. Rules enforced by src/coverage.ts: an ENABLED Worker with no entry FAILS; an entry whose Worker is no longer enabled FAILS (a stale allowance must not rot into a permanent silent pass); an entry naming a Worker that does not exist FAILS; a zero-length enumeration FAILS (an empty success is indistinguishable from a permission gap, fc#1180 F5); a non-boolean previews_enabled FAILS as UNKNOWN. An entry here RECORDS an exposure, it does not bless it: workers.dev is not covered by Cloudflare Access, which binds a hostname, so each of these depends on the Worker's own code staying correct forever with no platform gate behind it. Disabling any of these live hostnames is Conrad-gated (fc#1180 F1 precedent: unknown dependants). UNVERIFIED SINCE THE FLEET CUT: this list was last reconciled against the account on 2026-08-15 and no seat currently holds a Workers-Scripts-Read token, so whether all four scripts still exist is UNKNOWN. It is deliberately left unchanged rather than trimmed on a guess: an entry naming a missing script FAILS LOUDLY, which is the correct outcome for an unverified allowance, whereas silently deleting entries would manufacture a pass. Re-reconcile in the same change that provisions CF_WORKERS_READ_TOKEN.",
     "allowed": [
       {
         "script": "slate-logs",
         "reason": "DELIBERATE: slate#51 pins workers_dev = true in log-worker/wrangler.toml so every deploy asserts the door OPEN; self-auths (401 to anon from outside)",
-        "coverage": "fleet Gatus vantage, monitor#44 -- this Worker cannot probe the 401 (CF 1042); app-layer auth only, no platform gate"
+        "coverage": "app-layer auth only, no platform gate; this Worker cannot probe the 401 (CF 1042). The fleet Gatus vantage that used to cover it is GONE (monitor#44 is void)"
       },
       {
         "script": "slate-search",
         "reason": "DELIBERATE: slate#51 / slate#170 cutover pins workers_dev = true in search-worker/wrangler.toml; self-auths (405 to anon GET from outside)",
-        "coverage": "fleet Gatus vantage, monitor#44 -- this Worker cannot probe the 405 (CF 1042); app-layer auth only, no platform gate"
+        "coverage": "app-layer auth only, no platform gate; this Worker cannot probe the 405 (CF 1042). The fleet Gatus vantage that used to cover it is GONE (monitor#44 is void)"
       },
       {
         "script": "sidvicious-search",
         "reason": "UNDECLARED-BY-CONFIG, recorded not blessed: SidVicious_exe/search-worker/wrangler.toml pins workers_dev=true entirely and absent means TRUE, so this exposure is the accidental default rather than a decision. Gated only by the SEARCH_SECRET header (401 to anon from outside), and workers.dev is its whole public surface (no routes). Needs an explicit true-or-false decision in that repo",
-        "coverage": "fleet Gatus vantage, monitor#44 -- this Worker cannot probe the 401 (CF 1042); tracked in fc#1180 F2"
+        "coverage": "app-layer auth only, no platform gate; this Worker cannot probe the 401 (CF 1042). Tracked in fc#1180 F2"
       },
       {
         "script": "mt5-risk-agent",
         "reason": "DELIBERATE consumed door: mt5-risk-bot pins workers_dev true in agent/wrangler.jsonc; ADVICE_URL is https://mt5-risk-agent.skyphusion.workers.dev/ask. Self-auths (401 unauthorized to anon GET/POST /ask). No custom-domain routes, so workers.dev is the whole public surface. Disabling it would break the bot (fc#1180 F1 unknown-dependants class)",
-        "coverage": "this Worker cannot probe the 401 (CF 1042); app-layer ADVICE_TOKEN only, no platform gate. No fleet Gatus tile yet"
+        "coverage": "app-layer ADVICE_TOKEN only, no platform gate; this Worker cannot probe the 401 (CF 1042)"
       }
     ]
   },
@@ -32,46 +32,41 @@
     { "name": "blog-www", "url": "https://www.skyphusion.net/", "ok": [200, 301, 302, 308], "kind": "uptime" },
     { "name": "playground", "url": "https://play.skyphusion.org/", "ok": [200, 302], "kind": "uptime",
       "requireHeaders": { "x-content-type-options": "nosniff" } },
-    { "name": "status-gatus", "url": "https://status.skyphusion.org/", "ok": [200], "kind": "uptime",
-      "note": "public status board by design (fc#465); push API stays GATUS_PUSH_TOKEN gated" },
-    { "name": "authentik", "url": "https://auth.skyphusion.org/", "ok": [200, 302], "kind": "uptime" },
-    { "name": "ntfy", "url": "https://ntfy.skyphusion.org/", "ok": [200], "kind": "uptime" },
-
-    { "name": "vivijure-com", "url": "https://vivijure.com/", "ok": [200], "kind": "uptime" },
-    { "name": "vivijure-www", "url": "https://www.vivijure.com/", "ok": [200, 301, 308], "kind": "uptime" },
-    { "name": "vivijure-demo", "url": "https://demo.vivijure.com/", "ok": [200], "kind": "uptime" },
     { "name": "hollow", "url": "https://hollow.skyphusion.org/", "ok": [200], "kind": "uptime" },
     { "name": "dustfall", "url": "https://dustfall.skyphusion.org/", "ok": [200], "kind": "uptime" },
     { "name": "grid-hub-door", "url": "https://grid-hub.skyphusion.org/", "ok": [200], "kind": "uptime",
       "note": "public federation info page at root; worlds bind GRID via RPC. workers.dev stays OFF -- asserted by COVER.workers-dev, not by a probe" },
+    { "name": "github-pages", "url": "https://github.skyphusion.org/", "ok": [200], "kind": "uptime",
+      "note": "org GitHub Pages brand home" },
+    { "name": "common-thread", "url": "https://common-thread.skyphusion.org/", "ok": [200], "kind": "uptime",
+      "note": "BYOK attribution UI; re-added 2026-09-25 after measuring a real 200 (it was dropped at fc#1194 while the hostname was NXDOMAIN)" },
+
+    { "name": "vivijure-com", "url": "https://vivijure.com/", "ok": [200], "kind": "uptime" },
+    { "name": "vivijure-www", "url": "https://www.vivijure.com/", "ok": [200, 301, 308], "kind": "uptime" },
+    { "name": "vivijure-demo", "url": "https://demo.vivijure.com/", "ok": [200], "kind": "uptime" },
+    { "name": "vivijure-panel", "url": "https://vivijure.skyphusion.org/", "ok": [200], "kind": "uptime",
+      "note": "panel app shell is public by design; the API behind it is Access-gated (F2.vivijure-access.*)" },
     { "name": "studio-shell", "url": "https://studio.vivijure.com/", "ok": [200], "kind": "uptime",
       "note": "public app shell; the API self-auths (AUTH.studio-controlplane.api)" },
+    { "name": "search-mcp-alive", "url": "https://search.vivijure.com/", "ok": [404], "kind": "uptime",
+      "note": "worker-alive tripwire: the API is POST/tool-shaped, anon GET / correctly 404s as JSON; a 5xx/timeout = worker down" },
+
+    { "name": "postern-demo", "url": "https://demo.posternonline.com/", "ok": [200], "kind": "uptime",
+      "note": "public postern demo (the product's shop window); apex and www redirect here" },
+    { "name": "postern-apex", "url": "https://posternonline.com/", "ok": [301, 308], "kind": "uptime",
+      "note": "301 to demo. is the intended behaviour; a 200 here would mean the redirect rule was lost" },
+    { "name": "postern-www", "url": "https://www.posternonline.com/", "ok": [301, 308], "kind": "uptime" },
+
     { "name": "rockenhaus-net", "url": "https://rockenhaus.net/", "ok": [200], "kind": "uptime",
       "note": "public court-record site (CF Pages)" },
     { "name": "rockenhaus-www", "url": "https://www.rockenhaus.net/", "ok": [200, 301, 308], "kind": "uptime" },
-    { "name": "github-pages", "url": "https://github.skyphusion.org/", "ok": [200], "kind": "uptime",
-      "note": "org GitHub Pages brand home" },
-    { "name": "analytics-tracker", "url": "https://analytics.skyphusion.org/script.js", "ok": [200], "kind": "uptime",
-      "note": "Umami tracker path is Access-BYPASSED by design (sites break without it); the dashboard root is gated (F2.analytics-access)" },
-    { "name": "search-mcp-alive", "url": "https://search.vivijure.com/", "ok": [404], "kind": "uptime",
-      "note": "worker-alive tripwire: the API is POST/tool-shaped, anon GET / correctly 404s as JSON; a 5xx/timeout = worker down" },
 
     { "name": "F2.vivijure-access.cast", "url": "https://vivijure.skyphusion.org/api/cast", "ok": [302, 401, 403], "kind": "posture",
       "bodyMustNotInclude": ["portrait_key", "\"bible\""], "note": "302=Access-login / 401/403 = blocked (healthy); 200+data = Access opened up" },
     { "name": "F2.vivijure-access.modules", "url": "https://vivijure.skyphusion.org/api/modules", "ok": [302, 401, 403], "kind": "posture",
       "bodyMustNotInclude": ["config_schema"], "note": "anon must be Access-blocked; 200+data = Access opened up" },
-    { "name": "F2.chatplus-access", "url": "https://chat-plus.skyphusion.org/", "ok": [302, 401, 403], "kind": "posture",
-      "bodyMustNotInclude": ["WebUI", "webui"], "note": "302=Access-login (healthy); 200/OpenWebUI markup = Access gate dropped (denial-of-wallet surface)" },
     { "name": "F2.play-public", "url": "https://play.skyphusion.org/", "ok": [200], "kind": "posture",
       "requireHeaders": { "x-content-type-options": "nosniff" }, "note": "play runs AUTH_MODE=public with first-party auth (fleet#940); 200 + security headers = healthy public surface (workers.dev state is COVER.workers-dev)" },
-    { "name": "F2.chat-access", "url": "https://chat.skyphusion.org/", "ok": [302, 401, 403], "kind": "posture",
-      "bodyMustNotInclude": ["WebUI", "webui"], "note": "302=Access-login (healthy); 200/OpenWebUI markup = Access gate dropped" },
-    { "name": "F2.search-access", "url": "https://search.skyphusion.org/", "ok": [302, 401, 403], "kind": "posture",
-      "bodyMustNotInclude": ["searxng", "SearXNG"], "note": "SearXNG behind the Access service-token app (fc#795); 200/instance markup = gate dropped on an open scraping proxy" },
-    { "name": "F2.analytics-access", "url": "https://analytics.skyphusion.org/", "ok": [302, 401, 403], "kind": "posture",
-      "bodyMustNotInclude": ["umami", "Umami"], "note": "dashboard must stay Access-gated; the tracker/collect paths alone are bypassed by design" },
-    { "name": "F2.grafana-access", "url": "https://grafana.skyphusion.org/", "ok": [302, 401, 403], "kind": "posture",
-      "bodyMustNotInclude": ["Grafana", "grafana"], "note": "302=Access-login (healthy); 200/Grafana login = gate dropped on the metrics board" },
 
     { "name": "AUTH.postern-domain.messages", "url": "https://postern.skyphusion.org/api/messages", "ok": [401, 403], "kind": "posture",
       "bodyMustNotInclude": ["\"from\"", "\"subject\"", "\"body\""], "note": "custom-domain door to the email API; 200 = mailbox exposure. The workers.dev twin was removed at fc#1194 (unprobeable, CF 1042); that hostname's state is asserted by COVER.workers-dev" },
