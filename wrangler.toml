@@ -11,10 +11,15 @@
 # `wrangler secret put <NAME>` BEFORE the first tagged deploy: the ordering matters,
 # since a Worker whose cron is live but whose alert channel is unset is worse than
 # no Worker at all (it looks healthy and cannot page).
-# Secret: MONITOR_TOPIC -- the ntfy.sh topic. A SECRET, not a var: this repo is
-#   PUBLIC and an unauthenticated ntfy.sh topic is protected only by its NAME.
-# Secret: NTFY_TOKEN (OPTIONAL) -- publish token for an AUTHENTICATED ntfy server.
-#   Unset is normal on ntfy.sh; alerting works without it (see notifyTarget()).
+# Secret: GATUS_TELEGRAM_BOT_TOKEN -- the Telegram Bot API token for the bot Conrad
+#   already runs (`skyphusion-gatus`). PRIMARY alert transport by his fc#2172 ruling:
+#   "Telegram as the primary with postern email as the secondary". ntfy.sh was
+#   DECLINED (a new vendor, and alert bodies carry estate topology). REUSE this bot;
+#   do not mint a second one. A SECRET, not a var: this repo is PUBLIC.
+# Secret: GATUS_TELEGRAM_CHAT_ID -- the numeric chat id for that bot. Also a SECRET:
+#   it identifies a private chat. Either secret unset => alerting MUTE => /health RED
+#   and the cron dead-man ping is SUPPRESSED so HC.io pages instead (fc#2079).
+#   SECONDARY (postern email) is blocked on fc#2093 and deliberately not wired yet.
 # Secret: HC_DEADMAN_PING_URL -- the HC.io delivery dead-man check PING url (#278) ->
 #   `wrangler secret put HC_DEADMAN_PING_URL`. The email() handler GETs it on receipt at the
 #   dead-man Email Routing address. Per-function: the ping url ONLY, never the HC.io mgmt key.
@@ -23,7 +28,7 @@
 #   if the cron stops firing, HC.io pages that the MONITOR is down. Per-function: ping url ONLY.
 # Secret: CF_CERT_READ_TOKEN -- READ-scoped CF API token (Zone Read + SSL and Certificates Read
 #   ONLY) for the TLS cert-expiry probe (monitor#3 part 2) -> `wrangler secret put
-#   CF_CERT_READ_TOKEN`. Daily KV-gated sweep of active zones' certificate_packs; ntfy-warns
+#   CF_CERT_READ_TOKEN`. Daily KV-gated sweep of active zones' certificate_packs; warns
 #   inside 14d of expires_on. Per-function token; unset -> probe no-ops.
 # Secret: CF_WORKERS_READ_TOKEN -- READ-scoped CF API token carrying Account > Workers Scripts >
 #   Read ONLY, for the workers.dev coverage sweep (fc#1194 / fc#1180 F2) -> `wrangler secret put
@@ -61,10 +66,10 @@ enabled = true
 crons = ["*/5 * * * *"]
 
 [vars]
-# Public ntfy.sh, deliberately: the alert path must survive the loss of everything
-# we host (it is the channel needed exactly when our own infrastructure is gone).
-NTFY_URL = "https://ntfy.sh"
-# MONITOR_TOPIC is a SECRET, not a var -- see the header. Never put the topic here.
+# Telegram Bot API base. A var only so a test can drive alertTransport() without
+# holding either secret; src/index.ts falls back to this same value when unset.
+# The two credentials are SECRETS -- see the header. Never put either one here.
+TELEGRAM_API_BASE = "https://api.telegram.org
 # RUN_KEY gates the manual /run fetch endpoint (set to a non-empty secret-ish value to enable).
 RUN_KEY = ""
 # monitor#42 tunables -- every knob is a var (src/config.ts supplies the same

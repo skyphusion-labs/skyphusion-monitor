@@ -13,7 +13,7 @@
     "cloudflare-workers",
     "security",
     "observability",
-    "ntfy"
+    "telegram"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",

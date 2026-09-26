@@ -167,7 +167,7 @@ export function coverageSignature(findings: CoverageFinding[]): string {
   return findings.map((f) => `${f.script}:${f.code}`).join(",");
 }
 
-/** One-line human summary for the ntfy body and the /run payload. */
+/** One-line human summary for the alert body and the /run payload. */
 export function summarizeCoverage(findings: CoverageFinding[], scripts: number): string {
   if (!findings.length) return `${scripts} Worker(s) enumerated, all workers.dev state accounted for`;
   const head = findings.slice(0, 8).map((f) => `${f.code} ${f.script}`).join("; ");

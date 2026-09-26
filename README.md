@@ -7,7 +7,7 @@ no cross-zone networking, global vantage.
 > **Post-fleet (2026-09-25).** The Hetzner fleet was cut on 2026-09-24, and with it the internal
 > Gatus board this Worker used to complement. That makes the separate-failure-domain argument
 > STRONGER, not weaker: this is now the ONLY uptime and posture vantage on the estate, and its
-> alert path deliberately runs entirely on services we do not host (Cloudflare cron -> ntfy.sh,
+> alert path deliberately runs entirely on services we do not host (Cloudflare cron -> Telegram,
 > plus Healthchecks.io watching for the absence of a cron ping). Nothing in the alarm chain
 > depends on infrastructure that could fail in the same event it is meant to report.
 
@@ -59,32 +59,55 @@ https-only, `ok[]`, `kind: uptime|posture`, optional `bodyMustNotInclude[]`,
 parseable, unique names, posture-allowing-2xx must carry a content assertion) and the
 tagged deploy ships it (`v*`; a bare merge to main never redeploys). `src/index.ts` is the engine only -- zero estate hostnames in
 source. At runtime an invalid inventory **fails closed**: `/health` flips RED, one `urgent`
-ntfy fires (KV-deduped 6h), and no empty check set ever runs silently.
+alert fires (KV-deduped 6h), and no empty check set ever runs silently.
 
 Operational knobs are wrangler `[vars]` with safe in-code defaults (`src/config.ts`):
 `FETCH_TIMEOUT_MS`, `RETRY_DELAY_MS`, `HEALTH_STALE_MIN`, `CERT_WARN_DAYS`,
 `CERT_CHECK_INTERVAL_HOURS`, `WORKERSDEV_SWEEP_INTERVAL_MIN`, `DEADMAN_FROM`, `PROBE_USER_AGENT`.
 
 ## Alerting
-Publishes to **ntfy.sh** ONLY when a check fails its expectation (quiet when healthy). Posture
-regressions go out at `urgent` priority.
+Sends to **Telegram**, via the bot Conrad already runs (`skyphusion-gatus`), ONLY when a check
+fails its expectation (quiet when healthy). Posture regressions are prefixed `[URGENT]`.
 
-**The target is the public ntfy.sh, on purpose.** The self-hosted `ntfy.skyphusion.org` died with
-the fleet, and an alert channel that runs on our own infrastructure is not a channel; it is a
-second thing to lose in the same outage. Cloud to cloud to phone is what survives total
-infrastructure death, which is precisely when an alert matters most.
+**Telegram by ruling, not by default (fc#2172, 2026-09-26):** *"Telegram as the primary with
+postern email as the secondary."* The previous target was public **ntfy.sh**, which was
+DECLINED: alert bodies name hostnames, service names and failure modes, i.e. estate topology,
+which is exactly the category the pre-public scans exist to keep out of third-party hands, and
+ntfy.sh was a NEW vendor for a problem two already-trusted ones solve. Telegram is already
+trusted in this estate, so this widens nothing.
 
-Two consequences of that choice, both load-bearing:
+The path is still cloud -> cloud -> phone, which is the part that was always right: an alert
+channel running on our own infrastructure is not a channel, it is a second thing to lose in the
+same outage.
 
-- **`MONITOR_TOPIC` is a SECRET, not a var.** This repo is public, and an unauthenticated
-  ntfy.sh topic has no access control other than its name. A topic in a tracked file would let
-  anyone page the phone, or forge a reassuring all-clear.
-- **`NTFY_TOKEN` is OPTIONAL.** ntfy.sh takes an anonymous POST, so there is no token to hold.
-  The guard in `notifyTarget()` (`src/index.ts`) therefore requires only URL + topic. It used to
-  require the token as well, which would have made every alert return early and left the Worker
-  permanently and silently mute while the cron, `/health` and the dead-man all read green.
-  `tests/notify.test.ts` exists to keep that path dead, and it has been watched failing against
-  the old guard.
+**REUSE the one bot.** `GATUS_TELEGRAM_BOT_TOKEN` and `GATUS_TELEGRAM_CHAT_ID` are the names the
+fleet-era Gatus runbook already used, on purpose. A second bot pointed at the same human is two
+things to keep alive, and one of them rots silently.
+
+**Secondary (postern email) is NOT wired yet, and that is deliberate.** It is blocked on
+fc#2093: postern outbound send is broken today (`E_DELIVERY_FAILED` / relay upstream 530, the
+relay was a fleet host). A secondary declared before it can deliver is mute from birth, which is
+the arriving-but-unwatched failure in a new costume.
+
+### Mute is a FAILURE, not a quiet day (fc#2079)
+This Worker was found **red and silent**: three checks failing, self-marked sick, and every page
+going to a host answering 530. That is the worst state a monitor can be in, because every other
+defect surfaces as an alert and a defect in alerting surfaces as nothing. Three mechanisms now
+make it impossible to be in that state unobserved:
+
+- **`notify()` returns a verdict.** It used to await `fetch` and discard the `Response`, so a 401
+  from a rotated token or a 403 from a blocked bot looked exactly like a delivered page. It now
+  returns `false` on any non-2xx, on a throw, and on an unconfigured transport.
+- **`/health` reports `alerting: "ok" | "mute"`, and a mute flips it RED with zero check
+  failures.** An unset channel is a broken monitor on a quiet day; waiting for an outage to find
+  out is how this happened.
+- **A mute channel SUPPRESSES the cron dead-man ping**, so Healthchecks.io (an independent
+  failure domain that does not share our fate) pages about the monitor itself. A self-check
+  cannot detect the class where the instrument that would report the failure is the one that
+  failed, so a second observer does it.
+
+`tests/notify.test.ts` holds all three, and each was watched going RED against the previous
+behaviour before being trusted (revert the response check and the mute-sick term: 4 tests fail).
 
 ## Config / deploy
 - Bindings are mirrored in `src/env.ts` (hand-authored Env).
@@ -97,8 +120,8 @@ Two consequences of that choice, both load-bearing:
 
   | secret | required | unset behaviour |
   |---|---|---|
-  | `MONITOR_TOPIC` | **yes** | no alert is ever published |
-  | `NTFY_TOKEN` | no | anonymous publish (normal on ntfy.sh) |
+  | `GATUS_TELEGRAM_BOT_TOKEN` | **yes** | alerting MUTE: `/health` RED, cron dead-man ping SUPPRESSED so HC.io pages |
+  | `GATUS_TELEGRAM_CHAT_ID` | **yes** | same as above; both are required and neither is optional |
   | `HC_CRON_PING_URL` | **yes** | no monitor-liveness dead-man at all |
   | `CF_WORKERS_READ_TOKEN` + `CF_ACCOUNT_ID` | **yes** | `COVER.workers-dev` fails CLOSED and pages hourly; deliberate, since an absent credential must not read as "nothing exposed" |
   | `CF_CERT_READ_TOKEN` | no | cert-expiry probe no-ops |
@@ -108,7 +131,7 @@ Two consequences of that choice, both load-bearing:
 ## TLS cert-expiry probe (monitor#3 part 2)
 Workers `fetch` cannot read the peer cert, so expiry comes from the CF API instead: a daily
 (KV-gated, ~20h interval) sweep lists the account's active zones and each zone's
-`ssl/certificate_packs`, and ntfy-warns (`high`, not `urgent`) when any ACTIVE cert is within
+`ssl/certificate_packs`, and warns (non-urgent) when any ACTIVE cert is within
 14 days of `expires_on`. Info-only on `/health` (`cert: {soonestDays, warned, probeError,
 ageSec}`; never flips status -- Universal SSL auto-renews ~30d out, and a fully-expired cert
 already fails the uptime probes). Auth via `CF_CERT_READ_TOKEN`, a READ-scoped per-function
@@ -161,7 +184,7 @@ account, Pages projects, or a Worker exposed through a route on a zone it does n
   Cloudflare-side sender, is an open decision.
 - ~~Widen posture checks as more Access-gated surfaces land~~ DONE (monitor#42: full live
   inventory + config-driven checks; new surfaces are a `config/monitors.json` edit).
-- Optional: ntfy title/priority/tag policy as config (still inline in the engine).
+- Optional: alert title/priority/tag policy as config (still inline in the engine).
 - Self-auth coverage for the allowed `*.workers.dev` hostnames. Unprobeable from this Worker by
   construction (CF 1042), and the fleet Gatus vantage that used to carry it (monitor#44) is
   gone, so this is currently UNCOVERED rather than covered elsewhere. Do not read monitor#44 as

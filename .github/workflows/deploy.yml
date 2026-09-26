@@ -23,7 +23,8 @@ name: deploy
 #
 # Runtime secrets are set once via `wrangler secret put` and persist across
 # deploys; they are NOT set here. The full set is documented in wrangler.toml.
-# MONITOR_TOPIC is among them (a secret, not a var: this repo is public).
+# GATUS_TELEGRAM_BOT_TOKEN and GATUS_TELEGRAM_CHAT_ID are among them (secrets, not vars: this
+# repo is public). Both are REQUIRED: either one missing means alerting is MUTE (fc#2079).
 
 on:
   push:

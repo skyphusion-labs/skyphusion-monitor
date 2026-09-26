@@ -1,6 +1,6 @@
 // skyphusion-monitor: external security-posture + uptime checks from the CF edge.
 // Probes the PUBLIC surfaces as an OUTSIDER and asserts both uptime AND security
-// posture; alerts to ntfy ONLY on a failed assertion (quiet when healthy).
+// posture; alerts to Telegram ONLY on a failed assertion (quiet when healthy).
 //
 // monitor#42: this file is the ENGINE only. The probe inventory lives in
 // config/monitors.json (CI-validated, bundled at build); every operational knob
@@ -94,8 +94,14 @@ export function isSickFromLastRun(last: {
   failures: number;
   posture?: number;
   configError?: boolean;
+  alertingMute?: boolean;
 }): boolean {
-  return (last.failures ?? 0) > 0 || !!last.configError;
+  // fc#2079: alertingMute flips /health RED on its own, with zero check failures.
+  // "Red and silent" was the state this Worker was actually found in, and it is the
+  // worst one: every other defect surfaces as an alert, and a defect in alerting
+  // surfaces as nothing at all. A monitor that cannot page is not a healthy monitor,
+  // so the mute itself is a failure and must be visible BEFORE an outage needs it.
+  return (last.failures ?? 0) > 0 || !!last.configError || !!last.alertingMute;
 }
 
 async function attemptCheck(c: CheckConfig, t: Tunables): Promise<Result> {
@@ -124,42 +130,68 @@ async function runAll(checks: CheckConfig[], t: Tunables): Promise<Result[]> {
 }
 
 /**
- * Resolve the ntfy publish target, or null when alerting is unconfigured.
+ * Resolve the PRIMARY alert transport, or null when alerting is unconfigured.
  *
- * NTFY_TOKEN IS OPTIONAL, and that is the entire reason this is a named,
- * exported function. ntfy.sh accepts an anonymous POST to a topic; there is no
- * token to hold, and the topic NAME is the only credential (which is why
- * MONITOR_TOPIC is a secret and not a var in a public repo). The previous guard
- * required a token, so repointing NTFY_URL at ntfy.sh would have made every
- * single alert return early and left this Worker permanently, silently mute.
- * A monitor that cannot page is indistinguishable from an estate with nothing
- * wrong, which is the one failure mode this repo exists to prevent. Exported so
- * tests/notify.test.ts can assert the mute path stays dead.
+ * TELEGRAM, and specifically the bot Conrad already runs (`skyphusion-gatus`),
+ * by his ruling on fc#2172: "Telegram as the primary with postern email as the
+ * secondary". The previous target was public ntfy.sh, which he DECLINED as a new
+ * vendor for a problem two already-trusted ones solve. The env var names are the
+ * ones the existing fleet runbook already used (`GATUS_TELEGRAM_BOT_TOKEN`,
+ * `GATUS_TELEGRAM_CHAT_ID`) on purpose: this is REUSE of one bot, not a second
+ * bot pointed at the same human, because the second one rots silently.
+ *
+ * Both are SECRETS, not vars. This repo is PUBLIC: the bot token can post as the
+ * bot, and the chat id identifies a private chat. `TELEGRAM_API_BASE` is a var so
+ * a test can drive this function without either secret.
+ *
+ * Exported so tests/notify.test.ts can assert the mute path is still REACHABLE.
+ * An alert channel is the one thing here that cannot be allowed to fail quietly.
  */
-export function notifyTarget(env: Env): { url: string; authHeaders: Record<string, string> } | null {
-  const base = stripTrailingSlashes((env.NTFY_URL ?? "").trim());
-  const topic = (env.MONITOR_TOPIC ?? "").trim();
-  if (!base || !topic) return null;
-  const token = (env.NTFY_TOKEN ?? "").trim();
-  return { url: `${base}/${topic}`, authHeaders: token ? { Authorization: `Bearer ${token}` } : {} };
+export function alertTransport(env: Env): { url: string; chatId: string } | null {
+  const base = stripTrailingSlashes((env.TELEGRAM_API_BASE ?? "").trim()) || "https://api.telegram.org";
+  const token = (env.GATUS_TELEGRAM_BOT_TOKEN ?? "").trim();
+  const chatId = (env.GATUS_TELEGRAM_CHAT_ID ?? "").trim();
+  if (!token || !chatId) return null;
+  return { url: `${base}/bot${token}/sendMessage`, chatId };
 }
 
-async function notify(env: Env, title: string, body: string, urgent: boolean, tags: string): Promise<void> {
-  const target = notifyTarget(env);
-  if (!target) return;
-  await fetch(target.url, {
-    method: "POST",
-    headers: {
-      ...target.authHeaders,
-      Title: title,
-      Priority: urgent ? "urgent" : "high",
-      Tags: tags,
-    },
-    body,
-  });
+/**
+ * Send one alert. Returns TRUE only when the transport accepted it.
+ *
+ * The old version returned void and ignored the response, so a 401 from a rotated
+ * token, a 403 from a bot blocked by its recipient, or a network throw all looked
+ * exactly like a delivered page. That is how this Worker came to be red and silent
+ * for days. The boolean is load-bearing: scheduled() uses it to decide whether the
+ * independent dead-man observer should be allowed to stay quiet.
+ *
+ * NEVER log `target.url`: the bot token is a path segment of it. Status only.
+ */
+export async function notify(env: Env, title: string, body: string, urgent: boolean, tags: string): Promise<boolean> {
+  const target = alertTransport(env);
+  if (!target) {
+    console.log("alert: transport UNCONFIGURED, nothing sent");
+    return false;
+  }
+  const text = `${urgent ? "[URGENT] " : ""}${title}\n\n${body}\n\n(${tags})`;
+  try {
+    const res = await fetch(target.url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ chat_id: target.chatId, text, disable_web_page_preview: true }),
+    });
+    if (!res.ok) {
+      // Status only. The url carries the token and the body carries the chat id.
+      console.log("alert: transport REJECTED the send", { status: res.status });
+      return false;
+    }
+    return true;
+  } catch {
+    console.log("alert: transport THREW, send not delivered");
+    return false;
+  }
 }
 
-async function alert(env: Env, fails: Result[]): Promise<void> {
+async function alert(env: Env, fails: Result[]): Promise<boolean> {
   const posture = fails.filter(f => f.kind === "posture");
   const title = posture.length
     ? `SECURITY: ${posture.length} posture regression(s)` + (fails.length > posture.length ? ` + ${fails.length - posture.length} uptime` : "")
@@ -167,15 +199,15 @@ async function alert(env: Env, fails: Result[]): Promise<void> {
   const lines = fails.map(f =>
     `${f.kind === "posture" ? "[SEC] " : ""}${f.name}: ${f.reason ?? `status ${f.status}`} (want ${f.expected.join("/")})` +
     (f.note ? ` -- ${f.note}` : ""));
-  await notify(env, title, lines.join("\n"), posture.length > 0, posture.length ? "rotating_light,lock" : "warning");
+  return await notify(env, title, lines.join("\n"), posture.length > 0, posture.length ? "rotating_light,lock" : "warning");
 }
 
-async function recordRun(env: Env, results: Result[]): Promise<void> {
+async function recordRun(env: Env, results: Result[], alertingMute: boolean): Promise<void> {
   const fails = results.filter(r => !r.ok);
   const postureFails = fails.filter(f => f.kind === "posture");
   await env.MONITOR_STATE.put("last-run",
     JSON.stringify({ ts: Date.now(), checks: results.length, failures: fails.length,
-      posture: postureFails.length, failNames: fails.map(f => f.name),
+      posture: postureFails.length, alertingMute, failNames: fails.map(f => f.name),
       // Vantage surprises must self-diagnose from KV (the first #42 deploy
       // failed 2 checks with no way to see WHY without code archaeology).
       // Internal state only; /health still never exposes names or reasons.
@@ -489,8 +521,15 @@ export default {
     const results = [...await runAll(checks, t), coverageResult(coverage.state, t, now)];
     const fails = results.filter(r => !r.ok);
     const alertFails = fails.filter(f => f.name !== COVERAGE_CHECK_NAME || coverage.alertable);
-    ctx.waitUntil(recordRun(env, results));
-    if (alertFails.length) ctx.waitUntil(alert(env, alertFails));
+    // fc#2079. AWAITED, not waitUntil: the dead-man decision below depends on whether the
+    // page actually landed, so the send cannot be fire-and-forget any more.
+    //
+    // Two ways to be mute, and both count: no transport configured at all, and a transport
+    // that refused this send. The first is checked unconditionally, because a monitor whose
+    // channel is unset is already broken on a quiet day and must not wait for an outage to
+    // discover it.
+    const alertingMute = !alertTransport(env) || (alertFails.length > 0 && !(await alert(env, alertFails)));
+    ctx.waitUntil(recordRun(env, results, alertingMute));
     ctx.waitUntil(maybeCheckCerts(env, t, now)); // monitor#3 part 2: daily-gated inside
     // scheduled dead-man (monitor#3 part 1): reaching here means the cron FIRED and the run
     // COMPLETED -> ping the HC.io check so it does not page. This signals MONITOR liveness,
@@ -499,8 +538,19 @@ export default {
     // signal. No-op until the secret is set; only ever GET the hc-ping host (SSRF guard, same
     // as email()). If runAll() ever throws, scheduled() rejects BEFORE this -> no ping -> HC.io
     // pages, which is exactly right (the monitor broke).
+    //
+    // fc#2079: SUPPRESS the ping when alerting is mute. This is the whole mechanism. A dead-man
+    // that keeps pinging while the alert channel is dead is the arriving-but-unwatched state:
+    // the monitor looks alive and can tell nobody anything. Withholding the ping makes the
+    // INDEPENDENT observer (HC.io, a separate failure domain that does not share our fate)
+    // page about the monitor itself. A self-check cannot detect the class where the instrument
+    // that would report the failure is the one that failed, so the second observer does it.
     const cronPing = env.HC_CRON_PING_URL;
-    if (cronPing && cronPing.startsWith('https://hc-ping.com/')) ctx.waitUntil(pingDeadman(cronPing));
+    if (alertingMute) {
+      console.log("cron dead-man ping SUPPRESSED: alert transport is mute (HC.io should page)");
+    } else if (cronPing && cronPing.startsWith('https://hc-ping.com/')) {
+      ctx.waitUntil(pingDeadman(cronPing));
+    }
     // fc#1272: delivery dead-man HC ping runs HERE, not in email(). See email() comment.
     ctx.waitUntil(flushDeadmanEmailPending(env));
   },
@@ -564,7 +614,7 @@ export default {
       const raw = await env.MONITOR_STATE.get("last-run");
       const h: Record<string, unknown> = { service: "skyphusion-monitor", checks: checks.length, configValid: !errors.length && !policyErrors.length };
       if (!raw) return Response.json({ ...h, ok: false, reason: "no run recorded yet" }, { status: 503, headers: { "cache-control": "no-store" } });
-      const last = JSON.parse(raw) as { ts: number; checks: number; failures: number; posture?: number; configError?: boolean };
+      const last = JSON.parse(raw) as { ts: number; checks: number; failures: number; posture?: number; configError?: boolean; alertingMute?: boolean };
       const ageMs = Date.now() - last.ts;
       const stale = ageMs > t.healthStaleMs;
       // Gatus polls ok/sick. Any check failure (uptime OR posture) must flip the board;
@@ -583,7 +633,9 @@ export default {
       const coverage = covRaw ? (() => { const c = JSON.parse(covRaw) as CoverageState;
         return { ok: c.ok, scripts: c.scripts, allowed: c.allowed, enabled: c.enabled, probeError: !!c.error,
           ageSec: Math.round((Date.now() - c.ts) / 1000) }; })() : null;
-      return Response.json({ ...h, ok, lastRunTs: last.ts, ageSec: Math.round(ageMs / 1000), failures: last.failures, posture: last.posture ?? 0, stale, sick, configError: !!last.configError, cert, coverage },
+      // fc#2079: `alerting` is reported as a plain word so a reader cannot mistake a mute
+      // channel for a quiet estate. Counts only, no names, same rule as everything else here.
+      return Response.json({ ...h, ok, lastRunTs: last.ts, ageSec: Math.round(ageMs / 1000), failures: last.failures, posture: last.posture ?? 0, stale, sick, configError: !!last.configError, alerting: last.alertingMute ? "mute" : "ok", cert, coverage },
         { status: ok ? 200 : 503, headers: { "cache-control": "no-store" } });
     }
     // fc#1272: HC ping from fetch context (email() cannot hit hc-ping.com -- RU-IP block
@@ -610,9 +662,9 @@ export default {
       const results = [...await runAll(checks, t), coverageResult(coverage.state, t, now)];
       const fails = results.filter(r => !r.ok);
       const alertFails = fails.filter(f => f.name !== COVERAGE_CHECK_NAME || coverage.alertable);
-      await recordRun(env, results);
-      if (alertFails.length) await alert(env, alertFails);
-      return Response.json({ failures: fails.length, results }, { headers: { "cache-control": "no-store" } });
+      const alertingMute = !alertTransport(env) || (alertFails.length > 0 && !(await alert(env, alertFails)));
+      await recordRun(env, results, alertingMute);
+      return Response.json({ failures: fails.length, alertingMute, results }, { headers: { "cache-control": "no-store" } });
     }
     return new Response("skyphusion-monitor", { status: 200 });
   },
