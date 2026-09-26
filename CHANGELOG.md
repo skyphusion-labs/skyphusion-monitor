@@ -2,7 +2,46 @@
 
 ## v0.7.0
 
-**feat(restore): post-fleet rebuild -- inventory re-derived from measurement, alerting repointed to ntfy.sh.**
+**feat(restore): post-fleet rebuild -- inventory re-derived from measurement, alerting on Telegram.**
+
+> **CORRECTION, 2026-09-26 (fc#2079 / fc#2172), made before v0.7.0 ever shipped.** The text below
+> says alerting was repointed to **public ntfy.sh**. Conrad **declined that vendor** after it
+> landed on `main` but before any tag was cut: alert bodies name hostnames, service names and
+> failure modes, i.e. estate topology, which is the category the pre-public scans exist to keep
+> out of third-party hands, and ntfy.sh was a NEW vendor for a problem two already-trusted ones
+> solve. His ruling: *"Telegram as the primary with postern email as the secondary, that's why I
+> have Telegram (skyphusion-gatus) setup as the primary alerting source."*
+>
+> So v0.7.0 ships **Telegram** via the bot he already runs, reusing the fleet-era credential names
+> `GATUS_TELEGRAM_BOT_TOKEN` and `GATUS_TELEGRAM_CHAT_ID` (reuse, not a second bot). `NTFY_URL`,
+> `MONITOR_TOPIC` and `NTFY_TOKEN` are gone from `Env`, `wrangler.toml` and the docs. The
+> **postern email secondary is deliberately NOT wired**: it is blocked on fc#2093, because postern
+> outbound send is broken today (`E_DELIVERY_FAILED` / relay upstream 530, the relay was a fleet
+> host), and a secondary declared before it can deliver is mute from birth.
+>
+> **Three mechanisms added with it, because ntfy vs Telegram was never the real defect.** fc#2079
+> found this Worker *red and silent*: failing checks, self-marked sick, every page going to a host
+> answering 530. `notify()` awaited `fetch` and discarded the `Response`, so a 401 or a 403 was
+> indistinguishable from a delivered page.
+>
+> 1. `notify()` now returns a delivery **verdict** (false on any non-2xx, on a throw, and on an
+>    unconfigured transport). `alertTransport()` replaces `notifyTarget()`.
+> 2. `/health` reports `alerting: "ok" | "mute"`, and a mute flips it **RED with zero check
+>    failures**. An unset channel is a broken monitor on a quiet day; waiting for an outage to
+>    discover it is how this happened.
+> 3. A mute channel **suppresses the cron dead-man ping**, so Healthchecks.io -- an independent
+>    failure domain that does not share our fate -- pages about the monitor itself. A self-check
+>    cannot detect the class where the instrument that would report the failure is the one that
+>    failed.
+>
+> All three are in `tests/notify.test.ts` and each was **watched going red**: reverting the
+> response check and the mute-sick term fails 4 of them, 71 passing to 67.
+>
+> **NOT deployed by this change, and it cannot be from a crew seat.** Deploy is tag-only and the
+> live script does not exist (see below). The four required runtime secrets must be set with
+> `wrangler secret put` BEFORE the tag, and no crew seat holds any of them: the Telegram pair is
+> absent from all **32** `crew-secrets` escrow manifests, and Workers-Scripts-Read (needed for
+> `CF_WORKERS_READ_TOKEN`) returns **HTTP 403 on all three** crew Cloudflare tokens.
 
 The Worker script was deleted in error on 2026-09-25 during the fleet teardown, having been
 read as unwired because it had no route attached. It has no route BY DESIGN; it is

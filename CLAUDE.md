@@ -44,9 +44,13 @@ as a dormant check.
 - **Never add a check for a hostname you have not just resolved and probed.** The inventory is
   re-derived from measurement, not from memory or from this file; a check on a dead hostname is a
   permanent failure that masks real outages, and nine of them had to be removed on 2026-09-25.
-- **Alerting is ntfy.sh and `NTFY_TOKEN` is OPTIONAL.** Do not "restore" a token requirement in
-  `notifyTarget()`: on ntfy.sh there is no token, and requiring one mutes every alert while every
-  other indicator stays green. `MONITOR_TOPIC` is a SECRET because this repo is public and the
+- **Alerting is TELEGRAM via the existing `skyphusion-gatus` bot, by Conrad ruling fc#2172.**
+  Do NOT repoint it at ntfy.sh; he declined that vendor (alert bodies carry estate topology). Do
+  NOT mint a second bot; reuse `GATUS_TELEGRAM_BOT_TOKEN` + `GATUS_TELEGRAM_CHAT_ID`. Both are
+  REQUIRED, and a missing one means MUTE, which is a `/health` failure AND suppresses the cron
+  dead-man so HC.io pages. Never log the transport url: the bot token is a path segment of it.
+  The postern-email SECONDARY is blocked on fc#2093 and must not be declared before it can send.
+  Both credentials are SECRETS because this repo is public and the
   topic name is the only thing protecting the channel.
 
 ## Documentation map
@@ -80,7 +84,7 @@ npm run deploy      # wrangler deploy
   empty run).
 - **Dead-man's-switch.** Each cron run writes its timestamp + counts to the `MONITOR_STATE` KV.
   `/health` returns 503 if the last run is stale (`HEALTH_STALE_MIN`, default 12m) or had failures.
-- **Alerts are quiet-when-healthy.** ntfy only on failure; posture regressions at `urgent`.
+- **Alerts are quiet-when-healthy.** Telegram only on failure; posture regressions marked urgent.
 
 ## Conventions
 
