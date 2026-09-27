@@ -367,7 +367,14 @@ async function maybeCheckCerts(env: Env, t: Tunables, now: number): Promise<void
   const raw = await env.MONITOR_STATE.get("cert-check");
   if (raw && now - (JSON.parse(raw) as CertState).ts < t.certCheckIntervalMs) return;
   try {
-    const zones = (await cfApi<{ id: string; name: string }[]>(env.CF_CERT_READ_TOKEN, "/zones?status=active&per_page=50", CERT_UA)).result!;
+    const zoneList = await cfApi<{ id: string; name: string }[]>(env.CF_CERT_READ_TOKEN, "/zones?status=active&per_page=50", CERT_UA);
+    const zones = zoneList.result!;
+    // per_page=50 with no total_count check is a truncated census that reads complete. Same
+    // guard as the workers.dev sweep; the error lands in cert-check and shows as probeError.
+    const zoneTotal = zoneList.result_info?.total_count;
+    if (typeof zoneTotal === "number" && zoneTotal > zones.length) {
+      throw new Error(`zone enumeration truncated: total_count ${zoneTotal} > ${zones.length} returned`);
+    }
     const warnings: string[] = [];
     let soonestDays: number | null = null;
     for (const z of zones) {
