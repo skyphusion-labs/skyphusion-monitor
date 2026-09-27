@@ -155,6 +155,9 @@ export function alertTransport(env: Env): { url: string; chatId: string } | null
   return { url: `${base}/bot${token}/sendMessage`, chatId };
 }
 
+const TELEGRAM_MAX_TEXT = 4096;
+const TRUNCATION_MARK = "\n... (truncated)";
+
 /**
  * Send one alert. Returns TRUE only when the transport accepted it.
  *
@@ -172,7 +175,17 @@ export async function notify(env: Env, title: string, body: string, urgent: bool
     console.log("alert: transport UNCONFIGURED, nothing sent");
     return false;
   }
-  const text = `${urgent ? "[URGENT] " : ""}${title}\n\n${body}\n\n(${tags})`;
+  const frame = (b: string) => `${urgent ? "[URGENT] " : ""}${title}\n\n${b}\n\n(${tags})`;
+  let text = frame(body);
+  if (text.length > TELEGRAM_MAX_TEXT) {
+    // Telegram rejects sendMessage text over 4096 characters, and the widest outage builds the
+    // longest body: cut the BODY (title and tags stay) and say so, rather than lose the page.
+    const room = Math.max(0, TELEGRAM_MAX_TEXT - (text.length - body.length) - TRUNCATION_MARK.length);
+    let cut = body.slice(0, room);
+    const last = cut.charCodeAt(cut.length - 1);
+    if (last >= 0xd800 && last <= 0xdbff) cut = cut.slice(0, -1); // never split a surrogate pair
+    text = frame(cut + TRUNCATION_MARK);
+  }
   try {
     const res = await fetch(target.url, {
       method: "POST",
@@ -552,10 +565,17 @@ export default {
     // INDEPENDENT observer (HC.io, a separate failure domain that does not share our fate)
     // page about the monitor itself. A self-check cannot detect the class where the instrument
     // that would report the failure is the one that failed, so the second observer does it.
-    const cronPing = env.HC_CRON_PING_URL;
+    // Trim before the guard, as pingDeadman does: a secret with a stray leading space or
+    // newline must not skip the ping. A skip is never silent: the dead-man's own credential
+    // is the one link no other observer covers, so say which case it was (never the value).
+    const cronPing = (env.HC_CRON_PING_URL ?? "").trim();
     if (alertingMute) {
       console.log("cron dead-man ping SUPPRESSED: alert transport is mute (HC.io should page)");
-    } else if (cronPing && cronPing.startsWith('https://hc-ping.com/')) {
+    } else if (!cronPing) {
+      console.log("cron dead-man ping SKIPPED: HC_CRON_PING_URL is unset");
+    } else if (!cronPing.startsWith("https://hc-ping.com/")) {
+      console.log("cron dead-man ping SKIPPED: HC_CRON_PING_URL is not an https://hc-ping.com/ URL");
+    } else {
       ctx.waitUntil(pingDeadman(cronPing));
     }
     // fc#1272: delivery dead-man HC ping runs HERE, not in email(). See email() comment.
