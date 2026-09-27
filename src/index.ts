@@ -225,9 +225,11 @@ async function recordConfigFailure(env: Env, errors: string[]): Promise<void> {
     { expirationTtl: 86_400 });
   const already = await env.MONITOR_STATE.get("config-error-alerted");
   if (already) return;
-  await env.MONITOR_STATE.put("config-error-alerted", "1", { expirationTtl: 21_600 });
-  await notify(env, "skyphusion-monitor: probe config INVALID (fail-closed)",
+  // Record the dedupe key only once the page was DELIVERED: writing it first let a Telegram
+  // 5xx or a mute transport suppress the page for the whole 6h window.
+  const sent = await notify(env, "skyphusion-monitor: probe config INVALID (fail-closed)",
     errors.join("\n"), true, "rotating_light,gear");
+  if (sent) await env.MONITOR_STATE.put("config-error-alerted", "1", { expirationTtl: 21_600 });
 }
 
 // --- delivery dead-man (#278) --------------------------------------------------------------------
