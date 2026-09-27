@@ -155,6 +155,9 @@ export function alertTransport(env: Env): { url: string; chatId: string } | null
   return { url: `${base}/bot${token}/sendMessage`, chatId };
 }
 
+const TELEGRAM_MAX_TEXT = 4096;
+const TRUNCATION_MARK = "\n... (truncated)";
+
 /**
  * Send one alert. Returns TRUE only when the transport accepted it.
  *
@@ -172,7 +175,17 @@ export async function notify(env: Env, title: string, body: string, urgent: bool
     console.log("alert: transport UNCONFIGURED, nothing sent");
     return false;
   }
-  const text = `${urgent ? "[URGENT] " : ""}${title}\n\n${body}\n\n(${tags})`;
+  const frame = (b: string) => `${urgent ? "[URGENT] " : ""}${title}\n\n${b}\n\n(${tags})`;
+  let text = frame(body);
+  if (text.length > TELEGRAM_MAX_TEXT) {
+    // Telegram rejects sendMessage text over 4096 characters, and the widest outage builds the
+    // longest body: cut the BODY (title and tags stay) and say so, rather than lose the page.
+    const room = Math.max(0, TELEGRAM_MAX_TEXT - (text.length - body.length) - TRUNCATION_MARK.length);
+    let cut = body.slice(0, room);
+    const last = cut.charCodeAt(cut.length - 1);
+    if (last >= 0xd800 && last <= 0xdbff) cut = cut.slice(0, -1); // never split a surrogate pair
+    text = frame(cut + TRUNCATION_MARK);
+  }
   try {
     const res = await fetch(target.url, {
       method: "POST",
