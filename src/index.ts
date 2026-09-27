@@ -545,10 +545,17 @@ export default {
     // INDEPENDENT observer (HC.io, a separate failure domain that does not share our fate)
     // page about the monitor itself. A self-check cannot detect the class where the instrument
     // that would report the failure is the one that failed, so the second observer does it.
-    const cronPing = env.HC_CRON_PING_URL;
+    // Trim before the guard, as pingDeadman does: a secret with a stray leading space or
+    // newline must not skip the ping. A skip is never silent: the dead-man's own credential
+    // is the one link no other observer covers, so say which case it was (never the value).
+    const cronPing = (env.HC_CRON_PING_URL ?? "").trim();
     if (alertingMute) {
       console.log("cron dead-man ping SUPPRESSED: alert transport is mute (HC.io should page)");
-    } else if (cronPing && cronPing.startsWith('https://hc-ping.com/')) {
+    } else if (!cronPing) {
+      console.log("cron dead-man ping SKIPPED: HC_CRON_PING_URL is unset");
+    } else if (!cronPing.startsWith("https://hc-ping.com/")) {
+      console.log("cron dead-man ping SKIPPED: HC_CRON_PING_URL is not an https://hc-ping.com/ URL");
+    } else {
       ctx.waitUntil(pingDeadman(cronPing));
     }
     // fc#1272: delivery dead-man HC ping runs HERE, not in email(). See email() comment.
