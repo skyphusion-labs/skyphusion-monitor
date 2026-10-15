@@ -20,6 +20,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+      - name: wrangler.toml parses
+        run: python3 -c "import tomllib; tomllib.load(open('wrangler.toml','rb'))"
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
