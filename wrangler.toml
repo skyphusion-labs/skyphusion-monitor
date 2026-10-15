@@ -84,3 +84,6 @@ CERT_CHECK_INTERVAL_HOURS = "20"
 # run, so /health stays RED between sweeps; this only bounds how often the CF API is polled.
 WORKERSDEV_SWEEP_INTERVAL_MIN = "60"
 DEADMAN_FROM = "noreply@skyphusion.org"
+
+# red proof: this string is unterminated on purpose
+name = "unterminated
