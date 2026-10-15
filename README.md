@@ -65,6 +65,12 @@ Operational knobs are wrangler `[vars]` with safe in-code defaults (`src/config.
 `FETCH_TIMEOUT_MS`, `RETRY_DELAY_MS`, `HEALTH_STALE_MIN`, `CERT_WARN_DAYS`,
 `CERT_CHECK_INTERVAL_HOURS`, `WORKERSDEV_SWEEP_INTERVAL_MIN`, `DEADMAN_FROM`, `PROBE_USER_AGENT`.
 
+### Removing a check
+
+Remove a dead hostname from `config/monitors.json`. Before that change lands, grep the estate for the hostname. File an issue in each repo that still names it. A shipped client matters most, because an app-store build is not fixed by a deploy.
+
+Do not add that grep to this repo's CI. A failure in another repo is not a failure this repo can repair.
+
 ## Alerting
 Sends to **Telegram**, via the bot Conrad already runs (`skyphusion-gatus`), ONLY when a check
 fails its expectation (quiet when healthy). Posture regressions are prefixed `[URGENT]`.
