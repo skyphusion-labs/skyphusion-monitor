@@ -13,10 +13,18 @@ no cross-zone networking, global vantage.
 
 ## What it checks
 
-**The probe inventory is `config/monitors.json`** (monitor#42) -- **29 checks** (21 uptime,
-8 posture), re-derived from live measurement on 2026-09-25 rather than from recollection: every
-hostname was resolved against two independent resolvers and probed anonymously before being
-listed or dropped. Two kinds:
+**The probe inventory is `config/monitors.json`** (monitor#42) -- **28 checks** (20 uptime,
+8 posture), re-derived from live measurement rather than from recollection: every hostname is
+resolved against two independent resolvers and probed anonymously before being listed or dropped
+(the inventory was rebuilt that way on 2026-09-25, and `vivijure-demo` was retired the same way on
+2026-10-19 when its hostname was deleted; see the `$comment` in that file for both).
+
+**That total is 27 config rows plus ONE derived check, so do not expect it to equal
+`checks.length`.** `COVER.workers-dev` is synthesised in `src/index.ts` (posture kind) rather than
+listed as a row, because its subject is read from the Cloudflare API and not probed over HTTP. The
+reconciliation is 27 + 1 = 28, and 1 of the 8 posture checks is the derived one.
+
+Two kinds:
 
 - **uptime** -- the public surfaces serve what an outsider should get: the skyphusion and
   vivijure sites, demos and panel shells, the MUD worlds (hollow, dustfall), the grid-hub

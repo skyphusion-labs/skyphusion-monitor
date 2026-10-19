@@ -92,6 +92,27 @@ Docs: README and CLAUDE.md carry the post-fleet reality, including that `/health
 consumer now (Gatus was its only poller) and that any claim of a compensating "fleet Gatus
 vantage" (monitor#44) is void.
 
+**fix(inventory): retire the `vivijure-demo` probe, which can never go green again (monitor#112).**
+
+Conrad ruled the public vivijure demo removed entirely, and the teardown deleted its Worker
+script, D1, R2 bucket, AI Gateway and hostname. `demo.vivijure.com` answers NODATA on both
+1.1.1.1 and 8.8.8.8 (NOERROR status, empty answer section, SOA only, no A and no CNAME), measured
+off-Cloudflare and anonymously on 2026-10-19, so the check could never return 200 again. Same
+permanent-failure class as the nine removed on 2026-09-25, and the rule the inventory's own
+`$comment` already stated: a permanently failing board is how a real outage gets lost in the noise.
+
+The inventory is **28 checks (20 uptime, 8 posture)**, re-measured from the parsed file rather than
+decremented: 27 rows in `config/monitors.json` plus the one derived `COVER.workers-dev`. README
+carried 29/21/8 and was CORRECT for 28 rows plus the derived check; it now states the
+reconciliation explicitly, because confirming it meant reading `src/index.ts`.
+
+Every one of the ten remaining vivijure checks was probed in the same pass and matched its own
+`ok[]`, so none of them is touched. Trap recorded in the `$comment` for the next re-measurement:
+reading only `dig`'s `status:` field reports NOERROR for a deleted name in a live zone and reads as
+alive; read the ANSWER SECTION.
+
+Not shipped by this merge. The deploy is tag-gated and the Worker is not currently deployed at all.
+
 ## v0.6.4
 
 **fix(inventory): record `mt5-risk-agent` on the workers.dev allowance (#87).**
