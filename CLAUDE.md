@@ -94,7 +94,10 @@ npm run deploy      # wrangler deploy
 - **Mirror every `wrangler.toml` binding in the hand-authored `Env`** (`src/env.ts`).
 - `account_id` is never hardcoded; it comes from `CLOUDFLARE_ACCOUNT_ID`. Secrets via
   `wrangler secret put` only (never in tracked files).
-- `npm run typecheck` + `npm run test:coverage` are CI gates.
+- `npm run typecheck` is the `ci` workflow gate (`.github/workflows/ci.yml` runs that,
+  not the tests). The `coverage` workflow runs `npm test`, not `npm run test:coverage`:
+  it looks for a script named `coverage`, and this package names the coverage script
+  `test:coverage`, so the job falls through to `npm test`.
 
 ## Commits & versioning
 
