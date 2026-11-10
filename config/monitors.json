@@ -38,6 +38,8 @@
       "note": "public federation info page at root; worlds bind GRID via RPC. workers.dev stays OFF -- asserted by COVER.workers-dev, not by a probe" },
     { "name": "github-pages", "url": "https://github.skyphusion.org/", "ok": [200], "kind": "uptime",
       "note": "org GitHub Pages brand home" },
+    { "name": "alert-canary", "url": "https://alert-canary.invalid/", "ok": [200], "kind": "uptime",
+      "note": "TEMPORARY forced failure for fc#2079: .invalid can never resolve (RFC 6761), so every run fails and pages. Proves the Worker-to-Telegram path end to end. REMOVE in the next release." },
 
     { "name": "vivijure-com", "url": "https://vivijure.com/", "ok": [200], "kind": "uptime" },
     { "name": "vivijure-www", "url": "https://www.vivijure.com/", "ok": [200, 301, 308], "kind": "uptime" },

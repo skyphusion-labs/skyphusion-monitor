@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.7.1
+
+**test(alerting): a TEMPORARY forced failure, to prove the alert sink end to end (fc#2079).**
+
+Adds the `alert-canary` uptime check, aimed at `https://alert-canary.invalid/`. `.invalid` can
+never resolve (RFC 6761), so every 5-minute run fails it and `alert()` pages Telegram. This is the
+issue's own done condition: "force a failure and receive the alert", the only test that tells a
+fixed sink from a fixed config file. v0.7.2 removes the check as soon as the page is confirmed.
+
 ## v0.7.0
 
 > **Pre-ship correction, 2026-11-10 (fc#2079):** removed the `common-thread` uptime check before
