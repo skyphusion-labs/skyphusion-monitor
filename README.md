@@ -28,7 +28,7 @@ Two kinds:
 
 - **uptime** -- the public surfaces serve what an outsider should get: the skyphusion and
   vivijure sites, demos and panel shells, the MUD worlds (hollow, dustfall), the grid-hub
-  federation door, common-thread, the postern demo zone (apex and www redirect to demo),
+  federation door, the postern demo zone (apex and www redirect to demo),
   the court-record site (rockenhaus.net), GitHub Pages, and the search-MCP alive tripwire.
 - **security posture** (a change = regression, alerted as SECURITY):
   - **`COVER.workers-dev` (derived coverage, fc#1194):** the ONE check here that is not a

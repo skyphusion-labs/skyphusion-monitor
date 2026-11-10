@@ -38,8 +38,6 @@
       "note": "public federation info page at root; worlds bind GRID via RPC. workers.dev stays OFF -- asserted by COVER.workers-dev, not by a probe" },
     { "name": "github-pages", "url": "https://github.skyphusion.org/", "ok": [200], "kind": "uptime",
       "note": "org GitHub Pages brand home" },
-    { "name": "common-thread", "url": "https://common-thread.skyphusion.org/", "ok": [200], "kind": "uptime",
-      "note": "BYOK attribution UI; re-added 2026-09-25 after measuring a real 200 (it was dropped at fc#1194 while the hostname was NXDOMAIN)" },
 
     { "name": "vivijure-com", "url": "https://vivijure.com/", "ok": [200], "kind": "uptime" },
     { "name": "vivijure-www", "url": "https://www.vivijure.com/", "ok": [200, 301, 308], "kind": "uptime" },
