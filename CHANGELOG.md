@@ -2,6 +2,13 @@
 
 ## v0.7.0
 
+> **Pre-ship correction, 2026-11-10 (fc#2079):** removed the `common-thread` uptime check before
+> the first v0.7.0 deploy. common-thread hosting was torn down 2026-11-09 and
+> `common-thread.skyphusion.org` is NXDOMAIN (measured 2026-11-10 on 1.1.1.1, with
+> `skyphusion.org` returning 200 as a control). A local dry run of the inventory with no alert
+> transport showed it as the only failing uptime check. Alerts are not de-duplicated per check,
+> so shipping it would page every 5 minutes about a host that is gone on purpose.
+
 **feat(restore): post-fleet rebuild -- inventory re-derived from measurement, alerting on Telegram.**
 
 > **CORRECTION, 2026-09-26 (fc#2079 / fc#2172), made before v0.7.0 ever shipped.** The text below
