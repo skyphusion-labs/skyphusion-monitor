@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.7.1
+
+**fix(coverage): declare the 24 Workers that answer on workers.dev (fc#2079).**
+
+v0.7.0's first live run paged SECURITY: `COVER.workers-dev: 35 finding(s) over 86 Worker(s)`.
+Re-measured 2026-11-10T20:59Z with the runtime read token (`GET .../workers/scripts/{s}/subdomain`
+over all 86 scripts, every read a 200 with real booleans): 28 have workers.dev enabled, 4 were
+allowed, so 24 were undeclared. 11 of those 24 also have preview URLs on. 24 + 11 = 35, the
+finding count in the page.
+
+Conrad's ruling: the WordPress / Workers-for-Platforms Workers use workers.dev by design, so the
+fix is to DECLARE, not disable. This release adds 24 allowances, by class:
+
+- 15 WordPress / WfP Workers: deliberate, by the ruling.
+- `straightedge-alerts` and `straightedge-fleet`: deliberate consumed doors (the desk calls
+  `straightedge-alerts.skyphusion.workers.dev`).
+- `poly-styrene`: RECORDED, NOT BLESSED. No caller in any clone, but a Discord interactions
+  endpoint lives in the Discord developer portal, which no clone shows.
+- six vivijure media doors: RECORDED, NOT BLESSED. Each already answers on a custom domain behind
+  its own bearer gate. Turning workers.dev off is vivijure-cf#1401, which removes these entries
+  in the same window, or the monitor reports `allowance-stale`.
+
+The list's rule stands: an entry RECORDS an exposure, it does not bless it. Each entry carries its
+measured workers.dev and preview state.
+
 ## v0.7.0
 
 > **Pre-ship correction, 2026-11-10 (fc#2079):** removed the `common-thread` uptime check before
