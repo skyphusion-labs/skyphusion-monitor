@@ -94,10 +94,13 @@ npm run deploy      # wrangler deploy
 - **Mirror every `wrangler.toml` binding in the hand-authored `Env`** (`src/env.ts`).
 - `account_id` is never hardcoded; it comes from `CLOUDFLARE_ACCOUNT_ID`. Secrets via
   `wrangler secret put` only (never in tracked files).
-- `npm run typecheck` is the `ci` workflow gate (`.github/workflows/ci.yml` runs that,
-  not the tests). The `coverage` workflow runs `npm test`, not `npm run test:coverage`:
-  it looks for a script named `coverage`, and this package names the coverage script
-  `test:coverage`, so the job falls through to `npm test`.
+- `npm run typecheck` is the `ci` workflow gate (`.github/workflows/ci.yml` runs
+  `npm ci` and `npm run typecheck` only, not the tests). Neither `ci` nor `coverage`
+  runs the Vitest suite. `coverage` (`.github/workflows/coverage.yml`) is a required
+  context that passes without running tests: `npm run --silent` prints no script list,
+  so the `^  coverage` and `^  test` checks both miss and the job echoes
+  `no test/coverage script; coverage check present`. `npm test` and
+  `npm run test:coverage` are local gates only.
 
 ## Commits & versioning
 
