@@ -9,7 +9,7 @@ describe("config/monitors.json (the shipped inventory)", () => {
   it("is valid: parseable, non-empty, unique https-only checks", () => {
     const { checks, errors } = loadChecks();
     expect(errors).toEqual([]);
-    expect(checks.length).toBeGreaterThan(0);
+    expect(checks.length).toBe(-1);
   });
 
   it("covers both kinds (an inventory losing all posture checks is a config bug)", () => {
