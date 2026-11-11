@@ -62,6 +62,15 @@ export interface Env {
   // (wrangler itself reads it from CLOUDFLARE_ACCOUNT_ID at deploy time, which does not
   // reach the runtime). Set via `wrangler secret put CF_ACCOUNT_ID`.
   CF_ACCOUNT_ID: string; // secret
+  // CI schedule liveness (SCHED.ci, src/schedule.ts). READ-ONLY GitHub token with Actions: Read on
+  // the watched repository and nothing else. Set by deploy.yml on each tag deploy, from the GitHub
+  // secret SKYPHUSION_MONITOR_CI_SCHEDULE_READ (nobody holds its plaintext to put by hand).
+  // Unset -> the verdict is UNMEASURED, which FAILS: an absent credential is not a running CI.
+  GH_ACTIONS_READ_TOKEN: string; // secret
+  // The watched repository as "owner/repo". A SECRET, not a var, because this repo is PUBLIC and
+  // the watched repository is private: its name stays out of every committed file and every alert.
+  // Set by deploy.yml on each tag deploy, from the GitHub repo secret GH_SCHEDULE_REPO.
+  GH_SCHEDULE_REPO: string; // secret
 
   // ---- tunables (monitor#42): every knob is a var with a safe default in src/config.ts;
   // ---- all optional so an unset var can never break a run. Values are strings (wrangler vars).
@@ -71,6 +80,7 @@ export interface Env {
   CERT_WARN_DAYS?: string;           // warn when a cert expires within N days (default 14)
   CERT_CHECK_INTERVAL_HOURS?: string; // cert sweep cadence in hours (default 20; keep <24)
   WORKERSDEV_SWEEP_INTERVAL_MIN?: string; // workers.dev coverage sweep cadence (default 60)
+  SCHEDULE_SWEEP_INTERVAL_MIN?: string;   // CI schedule liveness sweep cadence (default 360)
   DEADMAN_FROM?: string;             // allowed envelope sender for the delivery dead-man
   PROBE_USER_AGENT?: string;         // probe User-Agent override
 }

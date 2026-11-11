@@ -83,4 +83,8 @@ CERT_CHECK_INTERVAL_HOURS = "20"
 # workers.dev coverage sweep cadence (fc#1194). The verdict is projected into EVERY 5-minute
 # run, so /health stays RED between sweeps; this only bounds how often the CF API is polled.
 WORKERSDEV_SWEEP_INTERVAL_MIN = "60"
+# CI schedule liveness (SCHED.ci, src/schedule.ts): how often the GitHub API is read. The watched
+# repository and its token are SECRETS (GH_SCHEDULE_REPO, GH_ACTIONS_READ_TOKEN); never name it here.
+# deploy.yml sets both on every tag deploy from GitHub secrets; nothing to put by hand.
+SCHEDULE_SWEEP_INTERVAL_MIN = "360"
 DEADMAN_FROM = "noreply@skyphusion.org"

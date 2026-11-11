@@ -52,6 +52,10 @@ export interface Tunables {
    * misconfigured independently of the cadence it guards.
    */
   workersDevStaleMs: number;
+  /** CI schedule liveness sweep cadence (SCHED.ci). */
+  scheduleSweepIntervalMs: number;
+  /** Its dead-man, 3x the cadence, NOT a var for the same reason as workersDevStaleMs. */
+  scheduleStaleMs: number;
   deadmanFrom: string;
   userAgent: string;
 }
@@ -64,6 +68,7 @@ function intVar(raw: string | undefined, fallback: number): number {
 /** Every tunable comes from a var with a safe default; a bad/missing var can never break a run. */
 export function tunables(env: Env): Tunables {
   const workersDevSweepIntervalMs = intVar(env.WORKERSDEV_SWEEP_INTERVAL_MIN, 60) * 60_000;
+  const scheduleSweepIntervalMs = intVar(env.SCHEDULE_SWEEP_INTERVAL_MIN, 360) * 60_000;
   return {
     fetchTimeoutMs: intVar(env.FETCH_TIMEOUT_MS, 12_000),
     retryDelayMs: intVar(env.RETRY_DELAY_MS, 1_500),
@@ -73,6 +78,8 @@ export function tunables(env: Env): Tunables {
     certCheckIntervalMs: intVar(env.CERT_CHECK_INTERVAL_HOURS, 20) * 3_600_000,
     workersDevSweepIntervalMs,
     workersDevStaleMs: workersDevSweepIntervalMs * 3,
+    scheduleSweepIntervalMs,
+    scheduleStaleMs: scheduleSweepIntervalMs * 3,
     deadmanFrom: env.DEADMAN_FROM?.trim() || "noreply@skyphusion.org",
     userAgent: env.PROBE_USER_AGENT?.trim() || "skyphusion-monitor/1 (+external posture probe)",
   };

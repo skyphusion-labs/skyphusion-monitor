@@ -10,6 +10,7 @@ import type { Env } from "./env";
 import { loadChecks, loadWorkersDevPolicy, tunables, type Tunables } from "./config";
 import { assessResponse, type CheckConfig, type CheckKind } from "./validate";
 import { assessWorkersDevCoverage, coverageSignature, summarizeCoverage, type SubdomainState } from "./coverage";
+import { assessSchedule, parseRepo, type ScheduleCounts } from "./schedule";
 
 interface Result { name: string; kind: CheckKind; url: string; status: number | null; expected: number[]; ok: boolean; reason?: string; note?: string }
 
@@ -530,6 +531,108 @@ function coverageResult(state: CoverageState | null, t: Tunables, now: number): 
     note: state.ok ? undefined : "workers.dev is not covered by Access; see config/monitors.json workersDev" };
 }
 
+// --- CI schedule liveness (SCHED.ci, src/schedule.ts) -------------------------------------------
+// Same shape as the workers.dev sweep: refreshed at most once per interval, projected into every
+// run, and LOUD on every failure mode (missing credential, bad repo secret, HTTP error, counts
+// that do not add up, a status filter that stopped measuring). The verdict text never names the
+// watched repository.
+
+interface ScheduleState {
+  ts: number;
+  ok: boolean;
+  sig: string;
+  summary: string;
+  counts?: ScheduleCounts;
+  error?: string;
+}
+
+const SCHEDULE_KEY = "ci-schedule";
+const SCHEDULE_CHECK_NAME = "SCHED.ci";
+const SCHEDULE_WINDOW_HOURS = 24;
+const SCHEDULE_UA = "skyphusion-monitor/ci-schedule";
+
+async function ghCount(token: string, repo: string, query: string, t: Tunables): Promise<number> {
+  const body = await ghGet(token, `/repos/${repo}/actions/runs?${query}&per_page=1`, t);
+  const n = (body as { total_count?: unknown }).total_count;
+  if (typeof n !== "number") throw new Error("runs response carried no total_count");
+  return n;
+}
+
+async function ghGet(token: string, path: string, t: Tunables): Promise<unknown> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), t.fetchTimeoutMs);
+  try {
+    const res = await fetch(`https://api.github.com${path}`, { signal: ctrl.signal, headers: {
+      authorization: `Bearer ${token}`, accept: "application/vnd.github+json",
+      "x-github-api-version": "2022-11-28", "user-agent": SCHEDULE_UA } });
+    // The status only: a GitHub error body can echo the path, and the path names the repository.
+    if (!res.ok) throw new Error(`GitHub API HTTP ${res.status}`);
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Remove every occurrence of the watched repository (and its owner and name) from a message. */
+export function scrubRepo(msg: string, repo: string): string {
+  let out = msg;
+  for (const part of [repo, ...repo.split("/")]) if (part) out = out.split(part).join("<repo>");
+  return out;
+}
+
+export async function sweepSchedule(token: string, repo: string, t: Tunables, now: number): Promise<ScheduleState> {
+  const since = new Date(now - SCHEDULE_WINDOW_HOURS * 3_600_000).toISOString().slice(0, 19) + "Z";
+  const w = `created=${encodeURIComponent(">=" + since)}`;
+  const [startupFailures, scheduledTotal, scheduledStartupFailures, sample] = await Promise.all([
+    ghCount(token, repo, `${w}&status=startup_failure`, t),
+    ghCount(token, repo, `${w}&event=schedule`, t),
+    ghCount(token, repo, `${w}&event=schedule&status=startup_failure`, t),
+    ghGet(token, `/repos/${repo}/actions/runs?per_page=100`, t),
+  ]);
+  const rows = (sample as { workflow_runs?: { conclusion?: unknown; created_at?: unknown }[] }).workflow_runs;
+  if (!Array.isArray(rows)) throw new Error("runs sample carried no workflow_runs");
+  const sinceMs = Date.parse(since);
+  const sampleStartupFailuresInWindow = rows.filter((r) => r.conclusion === "startup_failure"
+    && typeof r.created_at === "string" && Date.parse(r.created_at) >= sinceMs).length;
+  const counts: ScheduleCounts = { startupFailures, scheduledTotal, scheduledStartupFailures, sampleStartupFailuresInWindow };
+  const v = assessSchedule(counts, SCHEDULE_WINDOW_HOURS);
+  return { ts: now, ok: v.ok, sig: v.sig, summary: v.summary, counts };
+}
+
+/** Current verdict, refreshed at most once per interval; `alertable` only on a run that re-swept. */
+export async function scheduleVerdict(env: Env, t: Tunables, now: number): Promise<{ state: ScheduleState; alertable: boolean }> {
+  const raw = await env.MONITOR_STATE.get(SCHEDULE_KEY);
+  const prev = raw ? JSON.parse(raw) as ScheduleState : null;
+  if (prev && now - prev.ts < t.scheduleSweepIntervalMs) return { state: prev, alertable: false };
+  const repo = parseRepo(env.GH_SCHEDULE_REPO);
+  let next: ScheduleState;
+  if (!env.GH_ACTIONS_READ_TOKEN || !repo) {
+    next = { ts: now, ok: false, sig: "credential-missing",
+      summary: "CI schedule: GH_ACTIONS_READ_TOKEN or GH_SCHEDULE_REPO unset or malformed -- state UNMEASURED, not clean",
+      error: "schedule credential unset" };
+  } else {
+    try {
+      next = await sweepSchedule(env.GH_ACTIONS_READ_TOKEN, repo, t, now);
+    } catch (e) {
+      // A runtime fetch error can carry the URL, and the URL names the repository: scrub it.
+      const msg = scrubRepo(String(e), repo);
+      next = { ts: now, ok: false, sig: "sweep-error", summary: `CI schedule sweep FAILED: ${msg}`, error: msg };
+    }
+  }
+  await env.MONITOR_STATE.put(SCHEDULE_KEY, JSON.stringify(next), { expirationTtl: 86_400 * 2 });
+  return { state: next, alertable: !next.ok };
+}
+
+export function scheduleResult(state: ScheduleState | null, t: Tunables, now: number): Result {
+  const base = { name: SCHEDULE_CHECK_NAME, kind: "posture" as CheckKind,
+    url: "https://api.github.com/repos/.../actions/runs", status: null, expected: [] as number[] };
+  if (!state) return { ...base, ok: false, reason: "no CI schedule verdict recorded yet -- state UNKNOWN, not clean" };
+  if (now - state.ts > t.scheduleStaleMs) {
+    return { ...base, ok: false, reason: `CI schedule verdict is STALE (${Math.round((now - state.ts) / 60_000)}m old) -- state UNKNOWN, not clean` };
+  }
+  return { ...base, ok: state.ok, reason: state.ok ? undefined : state.summary };
+}
+
 export default {
   async scheduled(_e: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     const t = tunables(env);
@@ -540,9 +643,11 @@ export default {
     const now = Date.now();
     // Awaited, not waitUntil: its verdict is part of THIS run's result set.
     const coverage = await coverageVerdict(env, t, now);
-    const results = [...await runAll(checks, t), coverageResult(coverage.state, t, now)];
+    const schedule = await scheduleVerdict(env, t, now);
+    const results = [...await runAll(checks, t), coverageResult(coverage.state, t, now), scheduleResult(schedule.state, t, now)];
     const fails = results.filter(r => !r.ok);
-    const alertFails = fails.filter(f => f.name !== COVERAGE_CHECK_NAME || coverage.alertable);
+    const alertFails = fails.filter(f => (f.name !== COVERAGE_CHECK_NAME || coverage.alertable)
+      && (f.name !== SCHEDULE_CHECK_NAME || schedule.alertable));
     // fc#2079. AWAITED, not waitUntil: the dead-man decision below depends on whether the
     // page actually landed, so the send cannot be fire-and-forget any more.
     //
@@ -662,9 +767,15 @@ export default {
       const coverage = covRaw ? (() => { const c = JSON.parse(covRaw) as CoverageState;
         return { ok: c.ok, scripts: c.scripts, allowed: c.allowed, enabled: c.enabled, probeError: !!c.error,
           ageSec: Math.round((Date.now() - c.ts) / 1000) }; })() : null;
+      // CI schedule liveness: verdict word and counts only, never the watched repository.
+      const schRaw = await env.MONITOR_STATE.get(SCHEDULE_KEY);
+      const ciSchedule = schRaw ? (() => { const s = JSON.parse(schRaw) as ScheduleState;
+        return { ok: s.ok, sig: s.sig, startupFailures: s.counts?.startupFailures ?? null,
+          scheduledTotal: s.counts?.scheduledTotal ?? null, probeError: !!s.error,
+          ageSec: Math.round((Date.now() - s.ts) / 1000) }; })() : null;
       // fc#2079: `alerting` is reported as a plain word so a reader cannot mistake a mute
       // channel for a quiet estate. Counts only, no names, same rule as everything else here.
-      return Response.json({ ...h, ok, lastRunTs: last.ts, ageSec: Math.round(ageMs / 1000), failures: last.failures, posture: last.posture ?? 0, stale, sick, configError: !!last.configError, alerting: last.alertingMute ? "mute" : "ok", cert, coverage },
+      return Response.json({ ...h, ok, lastRunTs: last.ts, ageSec: Math.round(ageMs / 1000), failures: last.failures, posture: last.posture ?? 0, stale, sick, configError: !!last.configError, alerting: last.alertingMute ? "mute" : "ok", cert, coverage, ciSchedule },
         { status: ok ? 200 : 503, headers: { "cache-control": "no-store" } });
     }
     // fc#1272: HC ping from fetch context (email() cannot hit hc-ping.com -- RU-IP block
@@ -688,9 +799,11 @@ export default {
       if (configErrors.length) { await recordConfigFailure(env, configErrors); return Response.json({ configErrors }, { status: 500 }); }
       const now = Date.now();
       const coverage = await coverageVerdict(env, t, now);
-      const results = [...await runAll(checks, t), coverageResult(coverage.state, t, now)];
+      const schedule = await scheduleVerdict(env, t, now);
+      const results = [...await runAll(checks, t), coverageResult(coverage.state, t, now), scheduleResult(schedule.state, t, now)];
       const fails = results.filter(r => !r.ok);
-      const alertFails = fails.filter(f => f.name !== COVERAGE_CHECK_NAME || coverage.alertable);
+      const alertFails = fails.filter(f => (f.name !== COVERAGE_CHECK_NAME || coverage.alertable)
+        && (f.name !== SCHEDULE_CHECK_NAME || schedule.alertable));
       const alertingMute = !alertTransport(env) || (alertFails.length > 0 && !(await alert(env, alertFails)));
       await recordRun(env, results, alertingMute);
       return Response.json({ failures: fails.length, alertingMute, results }, { headers: { "cache-control": "no-store" } });

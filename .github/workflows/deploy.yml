@@ -21,10 +21,18 @@ name: deploy
 #   CLOUDFLARE_ACCOUNT_ID  -- the Cloudflare account id (wrangler.toml reads it
 #                             from env; never hardcoded).
 #
-# Runtime secrets are set once via `wrangler secret put` and persist across
-# deploys; they are NOT set here. The full set is documented in wrangler.toml.
+# Runtime secrets: most are set once by hand via `wrangler secret put` and persist across
+# deploys; those are NOT set here. The full set is documented in wrangler.toml.
 # GATUS_TELEGRAM_BOT_TOKEN and GATUS_TELEGRAM_CHAT_ID are among them (secrets, not vars: this
 # repo is public). Both are REQUIRED: either one missing means alerting is MUTE (fc#2079).
+#
+# EXCEPTION, the two SCHED.ci secrets: this workflow sets them on every tag deploy, because the
+# token exists ONLY as a GitHub Actions secret and nobody holds its plaintext to put by hand.
+#   GH_ACTIONS_READ_TOKEN  <- secrets.SKYPHUSION_MONITOR_CI_SCHEDULE_READ (org secret; Actions: Read
+#                             on the watched repository only)
+#   GH_SCHEDULE_REPO       <- secrets.GH_SCHEDULE_REPO (repo secret, "owner/repo"; a secret so the
+#                             watched repository is named in no committed file and no log)
+# Each is piped on stdin to `wrangler secret put`, never echoed, and an empty one fails the step.
 
 on:
   push:
@@ -85,3 +93,19 @@ jobs:
       - name: Deploy worker
         if: startsWith(github.ref, 'refs/tags/v')
         run: npx wrangler deploy
+      # SCHED.ci credentials (src/schedule.ts). Tag path only, AFTER the deploy so the Worker that
+      # reads them exists. Values reach the step through env, never through the script text, and
+      # go to wrangler on stdin, so neither is ever printed. Presence check only: an empty secret
+      # fails the deploy here instead of shipping a check that reads UNMEASURED.
+      - name: Set the CI schedule secrets on the Worker
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          SCHED_TOKEN: ${{ secrets.SKYPHUSION_MONITOR_CI_SCHEDULE_READ }}
+          SCHED_REPO: ${{ secrets.GH_SCHEDULE_REPO }}
+        run: |
+          set -euo pipefail
+          echo "SCHED_TOKEN=${SCHED_TOKEN:+SET} SCHED_REPO=${SCHED_REPO:+SET}"
+          [ -n "${SCHED_TOKEN:-}" ] || { echo "::error::secret SKYPHUSION_MONITOR_CI_SCHEDULE_READ is empty or not visible to this repo"; exit 1; }
+          [ -n "${SCHED_REPO:-}" ] || { echo "::error::secret GH_SCHEDULE_REPO is empty or not visible to this repo"; exit 1; }
+          printf '%s' "$SCHED_TOKEN" | npx wrangler secret put GH_ACTIONS_READ_TOKEN
+          printf '%s' "$SCHED_REPO" | npx wrangler secret put GH_SCHEDULE_REPO
