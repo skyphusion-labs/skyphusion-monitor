@@ -600,7 +600,7 @@ export async function sweepSchedule(token: string, repo: string, t: Tunables, no
 }
 
 /** Current verdict, refreshed at most once per interval; `alertable` only on a run that re-swept. */
-async function scheduleVerdict(env: Env, t: Tunables, now: number): Promise<{ state: ScheduleState; alertable: boolean }> {
+export async function scheduleVerdict(env: Env, t: Tunables, now: number): Promise<{ state: ScheduleState; alertable: boolean }> {
   const raw = await env.MONITOR_STATE.get(SCHEDULE_KEY);
   const prev = raw ? JSON.parse(raw) as ScheduleState : null;
   if (prev && now - prev.ts < t.scheduleSweepIntervalMs) return { state: prev, alertable: false };

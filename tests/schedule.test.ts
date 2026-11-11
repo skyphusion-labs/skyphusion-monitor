@@ -9,7 +9,7 @@
 // deployed sweep proves that; these prove the decision path and the no-name rule.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { assessSchedule, parseRepo, type ScheduleCounts } from "../src/schedule";
-import { scheduleResult, scrubRepo, sweepSchedule } from "../src/index";
+import { scheduleResult, scheduleVerdict, scrubRepo, sweepSchedule } from "../src/index";
 import { tunables } from "../src/config";
 import type { Env } from "../src/env";
 
@@ -113,4 +113,29 @@ describe("scheduleResult", () => {
   it("names no repository in its url", () => {
     expect(scheduleResult(null, t, Date.now()).url).toBe("https://api.github.com/repos/.../actions/runs");
   });
+});
+
+describe("scheduleVerdict with the secrets unset (the shipped state until the token exists)", () => {
+  function kv() {
+    const m = new Map<string, string>();
+    return { get: async (k: string) => m.get(k) ?? null, put: async (k: string, v: string) => { m.set(k, v); } } as unknown as KVNamespace;
+  }
+  afterEach(() => vi.unstubAllGlobals());
+  for (const [label, env] of [
+    ["both unset", {}],
+    ["token unset", { GH_SCHEDULE_REPO: "acme-labs/secret-infra" }],
+    ["repo unset", { GH_ACTIONS_READ_TOKEN: "t" }],
+    ["repo malformed", { GH_ACTIONS_READ_TOKEN: "t", GH_SCHEDULE_REPO: "not a repo" }],
+  ] as const) {
+    it(`${label}: UNMEASURED, fails, alertable, and makes no API call`, async () => {
+      const f = vi.fn(); vi.stubGlobal("fetch", f);
+      const e = { ...env, MONITOR_STATE: kv() } as unknown as Env;
+      const v = await scheduleVerdict(e, tunables(e), Date.now());
+      expect(v.state).toMatchObject({ ok: false, sig: "credential-missing" });
+      expect(v.alertable).toBe(true);
+      expect(scheduleResult(v.state, tunables(e), Date.now()).ok).toBe(false);
+      expect(f).not.toHaveBeenCalled();
+      expect(v.state.summary).not.toContain("secret-infra");
+    });
+  }
 });
