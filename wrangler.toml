@@ -85,5 +85,6 @@ CERT_CHECK_INTERVAL_HOURS = "20"
 WORKERSDEV_SWEEP_INTERVAL_MIN = "60"
 # CI schedule liveness (SCHED.ci, src/schedule.ts): how often the GitHub API is read. The watched
 # repository and its token are SECRETS (GH_SCHEDULE_REPO, GH_ACTIONS_READ_TOKEN); never name it here.
+# deploy.yml sets both on every tag deploy from GitHub secrets; nothing to put by hand.
 SCHEDULE_SWEEP_INTERVAL_MIN = "360"
 DEADMAN_FROM = "noreply@skyphusion.org"

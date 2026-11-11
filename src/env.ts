@@ -63,11 +63,13 @@ export interface Env {
   // reach the runtime). Set via `wrangler secret put CF_ACCOUNT_ID`.
   CF_ACCOUNT_ID: string; // secret
   // CI schedule liveness (SCHED.ci, src/schedule.ts). READ-ONLY GitHub token with Actions: Read on
-  // the watched repository and nothing else. Set via `wrangler secret put GH_ACTIONS_READ_TOKEN`.
+  // the watched repository and nothing else. Set by deploy.yml on each tag deploy, from the GitHub
+  // secret SKYPHUSION_MONITOR_CI_SCHEDULE_READ (nobody holds its plaintext to put by hand).
   // Unset -> the verdict is UNMEASURED, which FAILS: an absent credential is not a running CI.
   GH_ACTIONS_READ_TOKEN: string; // secret
   // The watched repository as "owner/repo". A SECRET, not a var, because this repo is PUBLIC and
   // the watched repository is private: its name stays out of every committed file and every alert.
+  // Set by deploy.yml on each tag deploy, from the GitHub repo secret GH_SCHEDULE_REPO.
   GH_SCHEDULE_REPO: string; // secret
 
   // ---- tunables (monitor#42): every knob is a var with a safe default in src/config.ts;
