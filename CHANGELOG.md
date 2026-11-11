@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added
+
+- A `bodyMustInclude` check field: the body must contain every listed marker (exact substring), or the check FAILS even on an allowed status. Without it, a check that allows `200` cannot tell the site it means from any other `200` on the hostname, such as a parked page, a default route or the wrong Worker.
+  - `postern-apex` and `postern-www` now assert `<title>Postern: email for humans and agents`.
+  - Measured 2026-11-11: the marker is present on both hostnames and absent on `demo.posternonline.com`, which also answers `200`, so the field discriminates.
+
 ## v0.8.1
 
 ### Fixed

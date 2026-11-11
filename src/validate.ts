@@ -9,6 +9,10 @@ export interface CheckConfig {
   // A body containing any of these (exact substring) is a FAILURE even if the
   // status matched (catches "200 but serving sensitive JSON" auth bypass).
   bodyMustNotInclude?: string[];
+  // The body must contain EVERY one of these (exact substring), or the check FAILS even on an
+  // allowed status. Without it a check that allows 200 cannot tell the site it means from any other
+  // 200 on the same hostname (a parked page, a default route, the wrong Worker).
+  bodyMustInclude?: string[];
   // Required response headers (lowercased name -> expected value).
   requireHeaders?: Record<string, string>;
   // Per-check fetch timeout override; falls back to the FETCH_TIMEOUT_MS var.
@@ -30,6 +34,10 @@ export function isValidCheck(c: CheckConfig): boolean {
   if (c.bodyMustNotInclude !== undefined) {
     if (!Array.isArray(c.bodyMustNotInclude)) return false;
     if (!c.bodyMustNotInclude.every((m) => typeof m === "string" && m.length > 0)) return false;
+  }
+  if (c.bodyMustInclude !== undefined) {
+    if (!Array.isArray(c.bodyMustInclude) || !c.bodyMustInclude.length) return false;
+    if (!c.bodyMustInclude.every((m) => typeof m === "string" && m.length > 0)) return false;
   }
   if (c.requireHeaders !== undefined) {
     if (typeof c.requireHeaders !== "object" || c.requireHeaders === null) return false;
@@ -93,6 +101,10 @@ export function assessResponse(
   if (c.bodyMustNotInclude?.length) {
     const hit = c.bodyMustNotInclude.find((s) => body.includes(s));
     if (hit) return { ok: false, reason: `body leaked marker ${JSON.stringify(hit)}` };
+  }
+  if (c.bodyMustInclude?.length) {
+    const missing = c.bodyMustInclude.find((s) => !body.includes(s));
+    if (missing !== undefined) return { ok: false, reason: `body lacks expected marker ${JSON.stringify(missing)}` };
   }
   return { ok: true };
 }

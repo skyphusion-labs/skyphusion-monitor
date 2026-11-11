@@ -25,7 +25,7 @@ describe("config/monitors.json (the shipped inventory)", () => {
     for (const c of checks.filter((x) => x.kind === "posture")) {
       if (c.ok.some((s) => s >= 200 && s < 300)) {
         expect(
-          Boolean(c.bodyMustNotInclude?.length || (c.requireHeaders && Object.keys(c.requireHeaders).length)),
+          Boolean(c.bodyMustNotInclude?.length || c.bodyMustInclude?.length || (c.requireHeaders && Object.keys(c.requireHeaders).length)),
           `posture check ${c.name} allows 2xx without a content assertion`,
         ).toBe(true);
       }
