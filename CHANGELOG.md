@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Security
+
+- `undici` override `7.29.0` -> `7.30.1` (#126). The override, added in #73 to clear an earlier alert, had since become a DOWNGRADE: wrangler's miniflare asks for exactly `7.30.1`. It held 11 open Dependabot alerts (5 high, 3 medium, 3 low), every one patched in `7.30.1` or earlier. `7.30.1` (published 2026-10-15) over `7.30.2` (2026-11-05), so that the pinned release is more than two weeks old. `npm audit`: 0 vulnerabilities. Dev and bundle toolchain only: undici is not in the deployed Worker bundle.
+
 ### Changed
 
 - `config/monitors.json` `workersDev.allowed` drops the six vivijure media doors (`vivijure-audio-beat-sync`, `vivijure-audio-master`, `vivijure-audio-mix`, `vivijure-blender`, `vivijure-image-prep`, `vivijure-video-finish`). They were recorded, not blessed, while the doors still answered on `*.workers.dev` (fleet-chezmoi#2079). The doors now set `workers_dev = false` (skyphusion-labs/vivijure-cf#1401: vivijure-cf PR #1405, vivijure-blender PR #46), so an allowance for them would now be `allowance-stale`.
