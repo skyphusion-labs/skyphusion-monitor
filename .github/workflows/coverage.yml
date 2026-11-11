@@ -40,13 +40,7 @@ jobs:
           else
             npm install --no-audit --no-fund
           fi
-          if npm run --silent 2>/dev/null | grep -qE '^  coverage'; then
-            npm run coverage
-          elif npm run --silent 2>/dev/null | grep -qE '^  test'; then
-            npm test
-          else
-            echo "no test/coverage script; coverage check present"
-          fi
+          npm test
 
       - name: Go coverage
         if: hashFiles('go.mod') != ''

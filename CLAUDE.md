@@ -60,8 +60,7 @@ as a dormant check.
   posture are both gone (2026-09-24 teardown); this repo is CF-edge-only and was never the
   inside view. Half of the resulting doc/code mismatch is now closed: `config/monitors.json` was
   re-derived from live measurement on 2026-09-25 and no longer lists dead fleet surfaces.
-  `README.md` is NOT closed; it still cites the "fleet Gatus vantage" as covering ground (three
-  places), and correcting that prose is a follow-up this branch did not do.
+  `README.md` now states the "fleet Gatus vantage" is gone and its ground uncovered (fc#2080).
 
 ## Commands
 
@@ -95,12 +94,9 @@ npm run deploy      # wrangler deploy
 - `account_id` is never hardcoded; it comes from `CLOUDFLARE_ACCOUNT_ID`. Secrets via
   `wrangler secret put` only (never in tracked files).
 - `npm run typecheck` is the `ci` workflow gate (`.github/workflows/ci.yml` runs
-  `npm ci` and `npm run typecheck` only, not the tests). Neither `ci` nor `coverage`
-  runs the Vitest suite. `coverage` (`.github/workflows/coverage.yml`) is a required
-  context that passes without running tests: `npm run --silent` prints no script list,
-  so the `^  coverage` and `^  test` checks both miss and the job echoes
-  `no test/coverage script; coverage check present`. `npm test` and
-  `npm run test:coverage` are local gates only.
+  `npm ci` and `npm run typecheck` only, not the tests). The required `coverage` context
+  (`.github/workflows/coverage.yml`) runs `npm test` directly with no script-detection grep
+  (fc#2080: the old grep never matched, so the job passed without running the suite).
 
 ## Commits & versioning
 
