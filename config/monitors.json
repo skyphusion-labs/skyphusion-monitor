@@ -67,10 +67,11 @@
       "note": "worker-alive tripwire: the API is POST/tool-shaped, anon GET / correctly 404s as JSON; a 5xx/timeout = worker down" },
 
     { "name": "postern-demo", "url": "https://demo.posternonline.com/", "ok": [200], "kind": "uptime",
-      "note": "public postern demo (the product's shop window); apex and www redirect here" },
-    { "name": "postern-apex", "url": "https://posternonline.com/", "ok": [301, 308], "kind": "uptime",
-      "note": "301 to demo. is the intended behaviour; a 200 here would mean the redirect rule was lost" },
-    { "name": "postern-www", "url": "https://www.posternonline.com/", "ok": [301, 308], "kind": "uptime" },
+      "note": "public postern demo mailbox (Worker postern)" },
+    { "name": "postern-apex", "url": "https://posternonline.com/", "ok": [200], "kind": "uptime",
+      "note": "the postern marketing site (Worker postern-site, live 2026-11-11); it no longer redirects to the demo" },
+    { "name": "postern-www", "url": "https://www.posternonline.com/", "ok": [200], "kind": "uptime",
+      "note": "the postern marketing site, served directly on www too" },
 
     { "name": "rockenhaus-net", "url": "https://rockenhaus.net/", "ok": [200], "kind": "uptime",
       "note": "public court-record site (CF Pages)" },
