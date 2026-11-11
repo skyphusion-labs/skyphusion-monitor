@@ -135,3 +135,35 @@ describe("assessResponse", () => {
     expect(assessResponse(c, 200, () => "NOSNIFF", "").ok).toBe(true); // case-insensitive
   });
 });
+
+describe("bodyMustInclude", () => {
+  const base: CheckConfig = { name: "site", url: "https://x.test/", ok: [200], kind: "uptime" };
+  const site: CheckConfig = { ...base, bodyMustInclude: ["<title>Postern: email"] };
+  const noHeaders = () => null;
+
+  it("validates: a non-empty list of non-empty strings only", () => {
+    expect(isValidCheck(site)).toBe(true);
+    expect(isValidCheck({ ...base, bodyMustInclude: [] })).toBe(false);
+    expect(isValidCheck({ ...base, bodyMustInclude: [""] })).toBe(false);
+    expect(isValidCheck({ ...base, bodyMustInclude: "x" as unknown as string[] })).toBe(false);
+  });
+
+  it("passes when every marker is present (the control)", () => {
+    expect(assessResponse(site, 200, noHeaders, "<html><title>Postern: email for humans</title>")).toEqual({ ok: true });
+  });
+
+  it("FAILS on an allowed 200 whose body lacks the marker: a parked page is not the site", () => {
+    const a = assessResponse(site, 200, noHeaders, "<html><title>Welcome to nginx</title>");
+    expect(a.ok).toBe(false);
+    expect(a.reason).toContain("lacks expected marker");
+  });
+
+  it("names the FIRST missing marker when several are required", () => {
+    const two: CheckConfig = { ...base, bodyMustInclude: ["alpha", "beta"] };
+    expect(assessResponse(two, 200, noHeaders, "alpha only").reason).toContain('"beta"');
+  });
+
+  it("still fails on status first, before reading markers", () => {
+    expect(assessResponse(site, 404, noHeaders, "<title>Postern: email").reason).toContain("status 404");
+  });
+});

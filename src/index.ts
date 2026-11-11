@@ -112,7 +112,7 @@ async function attemptCheck(c: CheckConfig, t: Tunables): Promise<Result> {
     const res = await fetch(c.url, { method: "GET", redirect: "manual", signal: ctrl.signal,
       headers: { "user-agent": t.userAgent } });
     // Read the body only when a marker assertion needs it.
-    const body = c.bodyMustNotInclude?.length ? await res.text().catch(() => "") : "";
+    const body = c.bodyMustNotInclude?.length || c.bodyMustInclude?.length ? await res.text().catch(() => "") : "";
     const a = assessResponse(c, res.status, (h) => res.headers.get(h), body);
     return { name: c.name, kind: c.kind, url: c.url, status: res.status, expected: c.ok, ok: a.ok, reason: a.reason, note: c.note };
   } catch (e) {

@@ -69,8 +69,10 @@
     { "name": "postern-demo", "url": "https://demo.posternonline.com/", "ok": [200], "kind": "uptime",
       "note": "public postern demo mailbox (Worker postern)" },
     { "name": "postern-apex", "url": "https://posternonline.com/", "ok": [200], "kind": "uptime",
-      "note": "the postern marketing site (Worker postern-site, live 2026-11-11); it no longer redirects to the demo" },
+      "bodyMustInclude": ["<title>Postern: email for humans and agents"],
+      "note": "the postern marketing site (Worker postern-site, live 2026-11-11); it no longer redirects to the demo. The title marker tells it from any other 200 on this hostname" },
     { "name": "postern-www", "url": "https://www.posternonline.com/", "ok": [200], "kind": "uptime",
+      "bodyMustInclude": ["<title>Postern: email for humans and agents"],
       "note": "the postern marketing site, served directly on www too" },
 
     { "name": "rockenhaus-net", "url": "https://rockenhaus.net/", "ok": [200], "kind": "uptime",
