@@ -41,18 +41,19 @@ Two kinds:
     `workers.dev` on turns the monitor RED without anyone remembering to add it. See
     "workers.dev coverage" below.
   - **F2 Access gates:** anonymous fetches must hit the Access login **302** (or 401/403) on
-    vivijure, chat-plus, chat, search (SearXNG), analytics (Umami dashboard), grafana -- a
+    vivijure (the cast and modules APIs) -- a
     `200`/app markup means the gate dropped. **Exception -- play is public:**
     `F2.play-public` expects **200** (`AUTH_MODE=public`, first-party auth; Access retired on
     play).
   - **AUTH self-auth tripwires:** in-worker auth must keep answering **401/403** anonymously
     (the postern custom domain, the search-internal MCP door, the hosted studio MCP
-    door at studio-mcp.vivijure.com, the studio control-plane API, crew-bus).
+    door at studio-mcp.vivijure.com, the studio control-plane API).
     The old local-studio MCP hostname is retired (local studio no longer public).
     These are all CUSTOM-domain hostnames, which this vantage
     CAN read honestly. Self-auth on a `*.workers.dev` hostname (slate-search, slate-logs,
-    sidvicious-search) is NOT probeable from here and belongs to the fleet Gatus vantage
-    (monitor#44); their workers.dev *state* is asserted by `COVER.workers-dev`.
+    sidvicious-search) is NOT probeable from here and is currently UNCOVERED (the fleet Gatus
+    vantage that was to carry it, monitor#44, is gone); their workers.dev *state* is asserted
+    by `COVER.workers-dev`.
   - **Dead hostnames are removed, not left to rot.** A check against a hostname that no
     longer resolves is not a dormant check; it is a permanent guaranteed failure, and a board
     that is always red is how a real outage gets lost. The 2026-09-25 rebuild dropped nine
@@ -186,7 +187,7 @@ names, same rule as check names and zone names.
 
 **What it still cannot see:** whether an allowed Worker's own auth is actually working. This
 vantage cannot probe a `*.workers.dev` hostname at all, so "declared" is not "verified"; that
-half lives in the fleet Gatus vantage (monitor#44). It also cannot see Workers outside this
+half is currently uncovered (the fleet Gatus vantage, monitor#44, is gone). It also cannot see Workers outside this
 account, Pages projects, or a Worker exposed through a route on a zone it does not enumerate.
 
 ## Follow-ups (v2)
