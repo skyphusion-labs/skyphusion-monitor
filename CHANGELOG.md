@@ -9,7 +9,11 @@
   - Control: GitHub answers 0 for a status filter it does not understand. The sweep therefore cross-checks the filtered count against an unfiltered sample of the latest runs, and reports UNMEASURED when the two disagree.
   - UNMEASURED and failing: a missing credential, a malformed repository secret, an HTTP error, counts that do not add up, or a stale verdict.
   - New secrets: `GH_ACTIONS_READ_TOKEN` (Actions: Read on the watched repository only) and `GH_SCHEDULE_REPO` (`owner/repo`). The repository is named only in a secret. Alert text, `/health` (verdict word and counts only), and every committed file say "CI schedule".
-  - Deploy order: set both secrets BEFORE the release that ships this. Without them, `SCHED.ci` reads UNMEASURED and `/health` goes red.
+  - Delivery: `deploy.yml` pushes both onto the Worker on the `v*` tag path, from the GitHub secrets `SKYPHUSION_MONITOR_CI_SCHEDULE_READ` (an org Actions secret; nobody holds its plaintext) and `GH_SCHEDULE_REPO` (a repo secret), with `wrangler secret put` reading stdin. A presence check fails the deploy if either is empty, and neither value is ever printed. `tests/deploy-workflow.test.ts` pins that step.
+
+### Security
+
+- `undici` override `7.29.0` -> `7.30.1` (#126). The override, added in #73 to clear an earlier alert, had since become a DOWNGRADE: wrangler's miniflare asks for exactly `7.30.1`. It held 11 open Dependabot alerts (5 high, 3 medium, 3 low), every one patched in `7.30.1` or earlier. `7.30.1` (published 2026-10-15) over `7.30.2` (2026-11-05), so that the pinned release is more than two weeks old. `npm audit`: 0 vulnerabilities. Dev and bundle toolchain only: undici is not in the deployed Worker bundle.
 
 ### Changed
 
