@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- `SCHED.ci`, a CI schedule liveness check (`src/schedule.ts`). Every 6 hours (`SCHEDULE_SWEEP_INTERVAL_MIN`, default 360), it reads the GitHub Actions runs API for one watched repository and FAILS when, over the last 24 hours, any run ended `startup_failure` or no scheduled run started at all.
+  - Why: measured 2026-11-11, that repository had whole days on which every run failed to start. Its own scheduled freshness audit failed to start on the same days and stayed silent. This check runs on Cloudflare, so it does not share that fate.
+  - Control: GitHub answers 0 for a status filter it does not understand. The sweep therefore cross-checks the filtered count against an unfiltered sample of the latest runs, and reports UNMEASURED when the two disagree.
+  - UNMEASURED and failing: a missing credential, a malformed repository secret, an HTTP error, counts that do not add up, or a stale verdict.
+  - New secrets: `GH_ACTIONS_READ_TOKEN` (Actions: Read on the watched repository only) and `GH_SCHEDULE_REPO` (`owner/repo`). The repository is named only in a secret. Alert text, `/health` (verdict word and counts only), and every committed file say "CI schedule".
+  - Deploy order: set both secrets BEFORE the release that ships this. Without them, `SCHED.ci` reads UNMEASURED and `/health` goes red.
+
 ### Changed
 
 - `config/monitors.json` `workersDev.allowed` drops the six vivijure media doors (`vivijure-audio-beat-sync`, `vivijure-audio-master`, `vivijure-audio-mix`, `vivijure-blender`, `vivijure-image-prep`, `vivijure-video-finish`). They were recorded, not blessed, while the doors still answered on `*.workers.dev` (fleet-chezmoi#2079). The doors now set `workers_dev = false` (skyphusion-labs/vivijure-cf#1401: vivijure-cf PR #1405, vivijure-blender PR #46), so an allowance for them would now be `allowance-stale`.
