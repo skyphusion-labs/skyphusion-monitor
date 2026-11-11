@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.8.0
+
 ### Added
 
 - `SCHED.ci`, a CI schedule liveness check (`src/schedule.ts`). Every 6 hours (`SCHEDULE_SWEEP_INTERVAL_MIN`, default 360), it reads the GitHub Actions runs API for one watched repository and FAILS when, over the last 24 hours, any run ended `startup_failure` or no scheduled run started at all.
