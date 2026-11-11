@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- `config/monitors.json` `workersDev.allowed` drops the six vivijure media doors (`vivijure-audio-beat-sync`, `vivijure-audio-master`, `vivijure-audio-mix`, `vivijure-blender`, `vivijure-image-prep`, `vivijure-video-finish`). They were recorded, not blessed, while the doors still answered on `*.workers.dev` (fleet-chezmoi#2079). The doors now set `workers_dev = false` (skyphusion-labs/vivijure-cf#1401: vivijure-cf PR #1405, vivijure-blender PR #46), so an allowance for them would now be `allowance-stale`.
+
 ## v0.7.1
 
 **fix(coverage): declare the 24 Workers that answer on workers.dev (fc#2079).**
