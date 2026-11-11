@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.8.1
+
+### Fixed
+
+- `postern-apex` and `postern-www` expect `200`. Since 2026-11-11 00:23Z both hostnames serve the postern marketing site (Worker `postern-site`) instead of redirecting to the demo, so the old `301/308` expectation paged on a healthy site.
+
 ## v0.8.0
 
 ### Added
