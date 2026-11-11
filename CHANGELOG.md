@@ -2,11 +2,24 @@
 
 ## Unreleased
 
+## v0.8.2
+
 ### Added
 
 - A `bodyMustInclude` check field: the body must contain every listed marker (exact substring), or the check FAILS even on an allowed status. Without it, a check that allows `200` cannot tell the site it means from any other `200` on the hostname, such as a parked page, a default route or the wrong Worker.
   - `postern-apex` and `postern-www` now assert `<title>Postern: email for humans and agents`.
   - Measured 2026-11-11: the marker is present on both hostnames and absent on `demo.posternonline.com`, which also answers `200`, so the field discriminates.
+- `tests/dead-hostnames.test.ts` (#132): fails if a retired hostname (fleet, analytics, status, the removed demo) reappears as a check target. Mutation-checked: injecting an `analytics.skyphusion.org` check turns it red.
+
+### Fixed
+
+- The required `coverage` job now runs `npm test` directly (#132). It chose its command with `npm run --silent | grep`, which prints nothing on npm 10, so it fell through to an echo and passed without running any test (run 43057444831). Proven both ways: a throwaway broken assertion made it red (run 43057823625), and the revert made it green.
+- `COVER.workers-dev` was red on `/health` (23 Workers enabled, 22 allowed): `workersDev.allowed` now records `wp-ggc-test`, the ggc.sh WooCommerce test site (wordpress-on-cloudflare#279, phase A) (#135). The entry must be removed when the test site is torn down.
+
+### Changed
+
+- README.md and CLAUDE.md say the fleet Gatus vantage (monitor#44) is gone and its ground uncovered, and no longer name the dead chat, search, analytics and grafana hostnames or crew-bus as live (#132).
+- Third-party actions are pinned by commit SHA (#134).
 
 ## v0.8.1
 
