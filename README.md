@@ -150,7 +150,7 @@ Workers `fetch` cannot read the peer cert, so expiry comes from the CF API inste
 14 days of `expires_on`. Info-only on `/health` (`cert: {soonestDays, warned, notifyFailed, probeError,
 ageSec}`; never flips status -- Universal SSL auto-renews ~30d out, and a fully-expired cert
 already fails the uptime probes). Auth via `CF_CERT_READ_TOKEN`, a READ-scoped per-function
-CF token (Zone Read + SSL and Certificates Read only); unset -> the probe no-ops. A probe
+CF token (Zone Read + SSL and Certificates Read only); unset -> `probeError` on `/health` (#101). A probe
 error is recorded to KV (visible on `/health`) and retried at the next daily window, never
 paged: the surfaces themselves stay covered by the uptime checks.
 
