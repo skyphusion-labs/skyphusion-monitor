@@ -124,6 +124,28 @@ make it impossible to be in that state unobserved:
 `tests/notify.test.ts` holds all three, and each was watched going RED against the previous
 behaviour before being trusted (revert the response check and the mute-sick term: 4 tests fail).
 
+### Mute is the LAST delivery outcome, not this run's (monitor#100)
+`alertingMute` used to be recomputed per run from "was a send attempted, and did it fail". A run
+with nothing alertable attempts no send, so it read NOT mute even when the last page had failed. A
+standing workers.dev coverage failure pages hourly, so that was 11 runs in 12: the dead-man ping
+went out and a dead Telegram channel looked healthy to HC.io and `/health` alike.
+
+- Every real send records its outcome in KV (`alert-delivery`). A run that sends nothing reads that
+  record, so a dead channel stays mute, and the ping stays withheld, on every run. A later
+  successful send clears it.
+- A daily Telegram `getMe` probe (`alert-probe`, about every 20h, 1 subrequest, no message to a
+  human) finds a revoked token on a quiet day. It clears only a failure the probe itself found.
+- The record is tied to a truncated hash of the token and chat id, so rotating the secret discards
+  a stale failure. The hash is never the token, and no log line carries the url.
+- **Known gap, by design:** `getMe` sees the token, not the chat. A blocked bot or a wrong chat id
+  is found only by a real send, so on a quiet estate it is found at the next real alert. A daily
+  heartbeat message would close it and was declined (an unsolicited page, Conrad's noise policy,
+  fc#2172).
+
+`tests/alert-delivery.test.ts` holds this. The first test was watched RED against the previous
+behaviour (second run read `alertingMute: false` after a failed send), and dropping the
+persisted-outcome read turns three tests red.
+
 ## Config / deploy
 - Bindings are mirrored in `src/env.ts` (hand-authored Env).
 - `account_id` comes from `CLOUDFLARE_ACCOUNT_ID` at deploy time; it never reaches the runtime.
