@@ -5,10 +5,16 @@
 ### Fixed
 
 - `alertingMute` reads the persisted outcome of the LAST alert send, not only this run's (#100). A run with no alertable failure attempts no send, so a dead Telegram channel read healthy on 11 runs in 12 while the workers.dev coverage failure was standing, and the cron dead-man ping kept going out. Outcomes live in the `alert-delivery` KV key, tied to a hash of the credential pair so a rotated secret discards a stale failure.
+- The cert-expiry probe records whether its warning was DELIVERED (#101). The `cert-check` state advanced before `notify()` ran and its result was dropped, so a failed warning was invisible for the 20h window. `/health` `cert.notifyFailed` now shows it. The state still advances either way, so a failing Telegram does not repeat the 1+N zone sweep every run.
+- An unset `CF_CERT_READ_TOKEN` is reported as `cert.probeError` on `/health` instead of a silent no-op (#101). Both stay info-only and never flip `ok`.
 
 ### Added
 
 - A daily Telegram `getMe` probe (`alert-probe`) finds a revoked bot token on a quiet day (#100). It does not see a blocked bot or a wrong chat id; that gap is documented in the README.
+
+### Notes
+
+- The Workers plan is Paid (measured 2026-11-12: the account subscriptions list `workers_paid`, state Paid), so the 1000 subrequest limit applies and the sweep needs no cap (#101).
 
 ## v0.8.3
 

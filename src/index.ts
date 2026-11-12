@@ -442,14 +442,20 @@ async function cfApi<T>(token: string, path: string, ua: string): Promise<CfEnve
 // probes -- this is the early-warning lane, not a pager). Per-function key: CF_CERT_READ_TOKEN
 // is read-scoped (Zone Read + SSL and Certificates Read) and never the account admin token.
 
-interface CertState { ts: number; zones?: number; soonestDays?: number | null; warned?: number; error?: string }
+interface CertState { ts: number; zones?: number; soonestDays?: number | null; warned?: number; notifyFailed?: boolean; error?: string }
 
 const CERT_UA = "skyphusion-monitor/cert-expiry (+monitor#3)";
 
 async function maybeCheckCerts(env: Env, t: Tunables, now: number): Promise<void> {
-  if (!env.CF_CERT_READ_TOKEN) return; // no-op until the secret is set
   const raw = await env.MONITOR_STATE.get("cert-check");
   if (raw && now - (JSON.parse(raw) as CertState).ts < t.certCheckIntervalMs) return;
+  if (!env.CF_CERT_READ_TOKEN) {
+    // monitor#101: an unset token was a silent no-op, so the early-warning lane could be absent
+    // for good with nothing saying so. Record it (daily-gated above); /health shows probeError.
+    // Still info-only: it never flips /health ok.
+    await env.MONITOR_STATE.put("cert-check", JSON.stringify({ ts: now, error: "CF_CERT_READ_TOKEN unset" } satisfies CertState));
+    return;
+  }
   try {
     const zoneList = await cfApi<{ id: string; name: string }[]>(env.CF_CERT_READ_TOKEN, "/zones?status=active&per_page=50", CERT_UA);
     const zones = zoneList.result!;
@@ -474,11 +480,14 @@ async function maybeCheckCerts(env: Env, t: Tunables, now: number): Promise<void
         }
       }
     }
+    // monitor#101 (c): send FIRST and record the result with the state, so a failed warning shows on
+    // /health as cert.notifyFailed instead of vanishing for the 20h window. The state still advances
+    // either way: retrying here would repeat the 1+N zone sweep every 5 minutes while Telegram is down.
+    const sent = warnings.length
+      ? await notify(env, `TLS: ${warnings.length} cert(s) near expiry`, warnings.join("\n"), false, "warning,lock")
+      : true;
     await env.MONITOR_STATE.put("cert-check",
-      JSON.stringify({ ts: now, zones: zones.length, soonestDays, warned: warnings.length } satisfies CertState));
-    if (warnings.length) {
-      await notify(env, `TLS: ${warnings.length} cert(s) near expiry`, warnings.join("\n"), false, "warning,lock");
-    }
+      JSON.stringify({ ts: now, zones: zones.length, soonestDays, warned: warnings.length, notifyFailed: !sent } satisfies CertState));
   } catch (e) {
     // Record the failure (visible on /health) and let the next daily window retry; a broken
     // cert probe must not fail the run or page -- the surfaces themselves are still covered.
@@ -834,7 +843,7 @@ export default {
       // no zone names (same never-leak-check-names rule as above).
       const certRaw = await env.MONITOR_STATE.get("cert-check");
       const cert = certRaw ? (() => { const c = JSON.parse(certRaw) as CertState;
-        return { soonestDays: c.soonestDays ?? null, warned: c.warned ?? 0, probeError: !!c.error, ageSec: Math.round((Date.now() - c.ts) / 1000) }; })() : null;
+        return { soonestDays: c.soonestDays ?? null, warned: c.warned ?? 0, notifyFailed: !!c.notifyFailed, probeError: !!c.error, ageSec: Math.round((Date.now() - c.ts) / 1000) }; })() : null;
       // workers.dev coverage (fc#1194): COUNTS + verdict only. The summary names scripts, so it
       // stays out of this response exactly like check names and zone names do.
       const covRaw = await env.MONITOR_STATE.get(COVERAGE_KEY);
