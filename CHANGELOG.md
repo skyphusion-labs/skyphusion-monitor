@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+
+- `alertingMute` reads the persisted outcome of the LAST alert send, not only this run's (#100). A run with no alertable failure attempts no send, so a dead Telegram channel read healthy on 11 runs in 12 while the workers.dev coverage failure was standing, and the cron dead-man ping kept going out. Outcomes live in the `alert-delivery` KV key, tied to a hash of the credential pair so a rotated secret discards a stale failure.
+
+### Added
+
+- A daily Telegram `getMe` probe (`alert-probe`) finds a revoked bot token on a quiet day (#100). It does not see a blocked bot or a wrong chat id; that gap is documented in the README.
+
 ## v0.8.3
 
 ### Fixed

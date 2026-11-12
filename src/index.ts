@@ -196,12 +196,80 @@ export async function notify(env: Env, title: string, body: string, urgent: bool
     if (!res.ok) {
       // Status only. The url carries the token and the body carries the chat id.
       console.log("alert: transport REJECTED the send", { status: res.status });
+      await recordDelivery(env, false, "send");
       return false;
     }
+    await recordDelivery(env, true, "send");
     return true;
   } catch {
     console.log("alert: transport THREW, send not delivered");
+    await recordDelivery(env, false, "send");
     return false;
+  }
+}
+
+// monitor#100: the LAST delivery outcome, persisted. alertingMute used to be recomputed per run
+// from "was a send attempted and did it fail", so a run with nothing alertable attempted no send
+// and read NOT mute even when the last send had failed. A standing non-alertable failure (the
+// workers.dev coverage verdict pages hourly, not every 5 minutes) made that 11 runs in 12, and the
+// dead-man ping went out on every one of them.
+//
+// `source` says who wrote it. A real send is the only thing that can prove the CHAT works (getMe
+// sees the token, not a blocked bot or a wrong chat id), so a passing probe clears only a failure
+// the probe itself found. `fp` ties the record to the credential pair it was measured against, so
+// rotating the secret (the actual fix) discards a stale failure instead of leaving a quiet estate
+// mute until some unrelated alert happens to fire. fp is a truncated hash, never the token.
+const DELIVERY_KEY = "alert-delivery";
+const PROBE_KEY = "alert-probe";
+const ALERT_PROBE_INTERVAL_MS = 20 * 3_600_000; // daily, like the cert probe
+
+interface DeliveryState { ts: number; ok: boolean; source: "send" | "probe"; fp: string }
+
+async function transportFingerprint(env: Env): Promise<string> {
+  const data = new TextEncoder().encode(`${(env.GATUS_TELEGRAM_BOT_TOKEN ?? "").trim()}:${(env.GATUS_TELEGRAM_CHAT_ID ?? "").trim()}`);
+  const d = new Uint8Array(await crypto.subtle.digest("SHA-256", data));
+  return Array.from(d.slice(0, 8), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function readDelivery(env: Env): Promise<DeliveryState | null> {
+  try {
+    const raw = await env.MONITOR_STATE.get(DELIVERY_KEY);
+    if (!raw) return null;
+    const d = JSON.parse(raw) as DeliveryState;
+    return d.fp === await transportFingerprint(env) ? d : null; // a record for another credential is not evidence
+  } catch {
+    return null;
+  }
+}
+
+async function recordDelivery(env: Env, ok: boolean, source: "send" | "probe", now = Date.now()): Promise<void> {
+  try {
+    const rec: DeliveryState = { ts: now, ok, source, fp: await transportFingerprint(env) };
+    await env.MONITOR_STATE.put(DELIVERY_KEY, JSON.stringify(rec));
+  } catch {
+    console.log("alert: delivery outcome NOT recorded (KV write failed)");
+  }
+}
+
+/** Daily Telegram getMe: finds a revoked token on a quiet day. 1 subrequest, no message to a human. */
+async function probeAlertTransport(env: Env, now: number): Promise<void> {
+  const target = alertTransport(env);
+  if (!target) return; // unconfigured is already mute
+  const raw = await env.MONITOR_STATE.get(PROBE_KEY);
+  if (raw && now - (JSON.parse(raw) as { ts: number }).ts < ALERT_PROBE_INTERVAL_MS) return;
+  let ok = false;
+  try {
+    const res = await fetch(target.url.replace(/\/sendMessage$/, "/getMe"), { method: "GET" });
+    ok = res.ok;
+    if (!ok) console.log("alert: getMe probe REJECTED", { status: res.status }); // status only: the url carries the token
+  } catch {
+    console.log("alert: getMe probe THREW");
+  }
+  await env.MONITOR_STATE.put(PROBE_KEY, JSON.stringify({ ts: now }));
+  if (!ok) await recordDelivery(env, false, "probe", now);
+  else {
+    const prev = await readDelivery(env);
+    if (prev && !prev.ok && prev.source === "probe") await recordDelivery(env, true, "probe", now);
   }
 }
 
@@ -655,7 +723,13 @@ export default {
     // that refused this send. The first is checked unconditionally, because a monitor whose
     // channel is unset is already broken on a quiet day and must not wait for an outage to
     // discover it.
-    const alertingMute = !alertTransport(env) || (alertFails.length > 0 && !(await alert(env, alertFails)));
+    //
+    // monitor#100: a run that attempts no send reads the PERSISTED outcome of the last one, so a
+    // dead channel stays mute (and the ping stays withheld) on every run, not only the run that
+    // happened to page. The daily getMe probe runs first so a revoked token surfaces on a quiet day.
+    await probeAlertTransport(env, now);
+    const sent = alertFails.length > 0 ? await alert(env, alertFails) : null;
+    const alertingMute = !alertTransport(env) || (sent === null ? (await readDelivery(env))?.ok === false : !sent);
     ctx.waitUntil(recordRun(env, results, alertingMute));
     ctx.waitUntil(maybeCheckCerts(env, t, now)); // monitor#3 part 2: daily-gated inside
     // scheduled dead-man (monitor#3 part 1): reaching here means the cron FIRED and the run
