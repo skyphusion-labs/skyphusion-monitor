@@ -139,7 +139,7 @@ behaviour before being trusted (revert the response check and the mute-sick term
   | `GATUS_TELEGRAM_CHAT_ID` | **yes** | same as above; both are required and neither is optional |
   | `HC_CRON_PING_URL` | **yes** | no monitor-liveness dead-man at all |
   | `CF_WORKERS_READ_TOKEN` + `CF_ACCOUNT_ID` | **yes** | `COVER.workers-dev` fails CLOSED and pages hourly; deliberate, since an absent credential must not read as "nothing exposed" |
-  | `CF_CERT_READ_TOKEN` | no | cert-expiry probe no-ops |
+  | `CF_CERT_READ_TOKEN` | no | cert-expiry probe reports `cert.probeError` on `/health` (info-only) |
   | `HC_DEADMAN_PING_URL` | **no, currently DORMANT** | `email()` no-ops. Its sender was a fleet cron (`mail-relay-deadman.sh`) that no longer exists, so setting it would create a check that can only page. Leave unset until a replacement sender exists. |
 - Cron `*/5 * * * *`. Cron primary; also public host `monitor.skyphusion.org`; `/health` + gated `/run?key=` exist if a route is added.
 
@@ -147,7 +147,7 @@ behaviour before being trusted (revert the response check and the mute-sick term
 Workers `fetch` cannot read the peer cert, so expiry comes from the CF API instead: a daily
 (KV-gated, ~20h interval) sweep lists the account's active zones and each zone's
 `ssl/certificate_packs`, and warns (non-urgent) when any ACTIVE cert is within
-14 days of `expires_on`. Info-only on `/health` (`cert: {soonestDays, warned, probeError,
+14 days of `expires_on`. Info-only on `/health` (`cert: {soonestDays, warned, notifyFailed, probeError,
 ageSec}`; never flips status -- Universal SSL auto-renews ~30d out, and a fully-expired cert
 already fails the uptime probes). Auth via `CF_CERT_READ_TOKEN`, a READ-scoped per-function
 CF token (Zone Read + SSL and Certificates Read only); unset -> the probe no-ops. A probe

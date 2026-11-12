@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Fixed
+
+- The cert-expiry probe records whether its warning was DELIVERED (#101). The `cert-check` state advanced before `notify()` ran and its result was dropped, so a failed warning was invisible for the 20h window. `/health` `cert.notifyFailed` now shows it. The state still advances either way, so a failing Telegram does not repeat the 1+N zone sweep every run.
+- An unset `CF_CERT_READ_TOKEN` is reported as `cert.probeError` on `/health` instead of a silent no-op (#101). Both stay info-only and never flip `ok`.
+
+### Notes
+
+- The Workers plan is Paid (measured 2026-11-12: the account subscriptions list `workers_paid`, state Paid), so the 1000 subrequest limit applies and the sweep needs no cap (#101).
+
 ## v0.8.3
 
 ### Fixed
