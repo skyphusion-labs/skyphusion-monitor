@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.9.1
+
+### Fixed
+
+- The workers.dev policy allows `wp-fdprobe1112c`, kept on purpose as the reproducer for Cloudflare support case 02430361 (WfP #291), and drops the allowances of `wp-woo-c1` and `wp-woo-c1b`, which read back 404 and are not in the account's script list (#143). Remove the `wp-fdprobe1112c` entry in the same change that deletes the Worker, when the case closes. Config only: it reaches the live Worker on the tag deploy.
+
 ## v0.9.0
 
 ### Fixed
