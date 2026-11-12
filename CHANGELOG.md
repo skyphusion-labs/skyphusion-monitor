@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## v0.8.3
+
+### Fixed
+
+- The workers.dev policy drops the allowances of four Workers deleted on 2026-11-12 (#138, fleet-chezmoi#2620): `mt5-risk-agent` (its source was removed by straightedge#1119, and it had no invocations on 11-11 or 11-12) and the probes `wp-cacheprobe`, `wp-cacheprobe-direct` and `wp-probe`. `tests/coverage.test.ts` no longer pins `mt5-risk-agent`.
+
+### Docs
+
+- `CLAUDE.md` states the bump-at-release convention (fc#1766, #137).
+
 ## v0.8.2
 
 ### Added
