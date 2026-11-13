@@ -21,10 +21,12 @@ as a dormant check.
 >    `HC_CRON_PING_URL` dead-man, where Healthchecks.io pages on the ABSENCE of a cron ping.
 > 2. **Any comment claiming the "fleet Gatus vantage" covers something (monitor#44) is void.**
 >    That vantage does not exist. Treat what it used to cover as uncovered, and say so.
-> 3. **This Worker is not deployed.** `monitor.skyphusion.org` was NXDOMAIN on 2026-09-25
->    despite `wrangler.toml` defining that route, because the deploy credentials went with the
->    teardown. Read deploy state from a live resolve, never from this doc or from `wrangler.toml`;
->    a defined route is not a live one, and deploying again is a separate, credentialed decision.
+> 3. **Read deploy state live, never from this doc or from `wrangler.toml`.** The Worker is
+>    deployed by the tag-gated deploy workflow and answers at `monitor.skyphusion.org` (v0.9.0
+>    and v0.9.1 deployed 2026-11-12). It was NOT deployed on 2026-09-25 (`monitor.skyphusion.org`
+>    was NXDOMAIN, because the deploy credentials went with the teardown), and this doc said so
+>    until 2026-11-13. A defined route is not a live one. To check: resolve the hostname,
+>    `GET /health`, and read the deploy workflow run for the latest `v*` tag.
 
 > Note: this is NOT Gatus and was never meant to replace it. It is the CF-edge vantage only, so
 > being the last vantage standing does NOT mean it covers Gatus's old ground: the inside view is
