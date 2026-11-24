@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.9.2
+
+### Removed
+
+- Drop `search-mcp-alive` and `AUTH.search-internal.mcp` from the probe inventory after hosted search-mcp retirement (#150, search-mcp#156). Leave `slate-search` and `sidvicious-search` workers.dev coverage alone.
+
 ## v0.9.1
 
 ### Fixed
