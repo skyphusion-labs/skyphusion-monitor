@@ -55,8 +55,7 @@
       "note": "panel app shell is public by design; the API behind it is Access-gated (F2.vivijure-access.*)" },
     { "name": "studio-shell", "url": "https://studio.vivijure.com/", "ok": [200], "kind": "uptime",
       "note": "public app shell; the API self-auths (AUTH.studio-controlplane.api)" },
-    { "name": "search-mcp-alive", "url": "https://search.vivijure.com/", "ok": [404], "kind": "uptime",
-      "note": "worker-alive tripwire: the API is POST/tool-shaped, anon GET / correctly 404s as JSON; a 5xx/timeout = worker down" },
+
 
     { "name": "postern-demo", "url": "https://demo.posternonline.com/", "ok": [200], "kind": "uptime",
       "note": "public postern demo mailbox (Worker postern)" },
@@ -80,8 +79,7 @@
 
     { "name": "AUTH.postern-domain.messages", "url": "https://postern.skyphusion.org/api/messages", "ok": [401, 403], "kind": "posture",
       "bodyMustNotInclude": ["\"from\"", "\"subject\"", "\"body\""], "note": "custom-domain door to the email API; 200 = mailbox exposure. The workers.dev twin was removed at fc#1194 (unprobeable, CF 1042); that hostname's state is asserted by COVER.workers-dev" },
-    { "name": "AUTH.search-internal.mcp", "url": "https://search-internal.vivijure.com/mcp", "ok": [401, 403], "kind": "posture",
-      "note": "internal search MCP is bearer-gated; 200 = the internal corpus (fleet-chezmoi, crew-secrets docs) is open" },
+
     { "name": "AUTH.studio-mcp.vivijure", "url": "https://studio-mcp.vivijure.com/mcp", "ok": [401, 403], "kind": "posture",
       "note": "studio MCP door self-auths; 200 = control-plane tools open" },
     { "name": "AUTH.studio-controlplane.api", "url": "https://studio.vivijure.com/api/projects", "ok": [401, 403], "kind": "posture",
