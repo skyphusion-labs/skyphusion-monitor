@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## v0.9.3
+
+### Fixed
+
+- `COVER.workers-dev` allowance matches the live account again (#152, #153). Add seven
+  undeclared `*.workers.dev` exposures and drop the stale `wp-fdprobe1112c` entry after
+  that Worker was deleted. Config only: it reaches the live Worker on this tag deploy.
+
 ## v0.9.2
 
 ### Removed
